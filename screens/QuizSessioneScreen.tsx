@@ -10,6 +10,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
@@ -71,24 +72,46 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       // Salva in risposte_utente
-      await supabase.from('risposte_utente').insert({
+      const { error: rispostaError } = await supabase.from('risposte_utente').insert({
         user_id: user.id,
         quiz_id: quizAttuale.id,
         risposta_data: opzione,
         is_corretta: isCorretta,
       });
 
+      if (rispostaError) {
+        Alert.alert(
+          'Salvataggio non riuscito',
+          'La risposta è valida ma non è stata registrata. Verifica la connessione e riprova.'
+        );
+        return;
+      }
+
       // Se sbagliato → aggiunge a quiz_da_correggere
       if (!isCorretta) {
-        await supabase.from('quiz_da_correggere').upsert({
+        const { error: correggereError } = await supabase.from('quiz_da_correggere').upsert({
           user_id: user.id,
           quiz_id: quizAttuale.id,
         });
+
+        if (correggereError) {
+          Alert.alert(
+            'Aggiornamento parziale',
+            'Risposta salvata, ma la lista "da correggere" non è stata aggiornata.'
+          );
+        }
       } else {
         // Se corretto → rimuove da quiz_da_correggere (se era presente)
-        await supabase.from('quiz_da_correggere').delete()
+        const { error: deleteError } = await supabase.from('quiz_da_correggere').delete()
           .eq('user_id', user.id)
           .eq('quiz_id', quizAttuale.id);
+
+        if (deleteError) {
+          Alert.alert(
+            'Aggiornamento parziale',
+            'Risposta salvata, ma non è stato possibile aggiornare la lista "da correggere".'
+          );
+        }
       }
     }
   }

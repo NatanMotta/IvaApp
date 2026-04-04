@@ -28,6 +28,39 @@ const COLORS = {
   inactive: '#9BA3AF',
 };
 
+function HomeStackNavigator() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#1A3A5C' },
+        headerTintColor: '#fff',
+        headerTitleStyle: { fontWeight: '700' },
+      }}
+    >
+      <Stack.Screen
+        name="HomeMain"
+        component={HomeScreen}
+        options={{ title: 'Home' }}
+      />
+      <Stack.Screen
+        name="Sezioni"
+        component={SezioniScreen}
+        options={({ route }: any) => ({ title: (route.params as any)?.moduloTitolo })}
+      />
+      <Stack.Screen
+        name="DettaglioSezione"
+        component={DettaglioSezioneScreen}
+        options={({ route }: any) => ({ title: (route.params as any)?.sezioneTitolo })}
+      />
+      <Stack.Screen
+        name="QuizSessione"
+        component={QuizSessioneScreen}
+        options={({ route }: any) => ({ title: (route.params as any)?.sezioneTitolo })}
+      />
+    </Stack.Navigator>
+  );
+}
+
 export default function App() {
   // null = stiamo ancora controllando, Session = loggato, false = non loggato
   const [session, setSession] = useState<Session | null | false>(null);
@@ -95,39 +128,10 @@ export default function App() {
         })}
       >
         <Tab.Screen
-  name="Home"
-  options={{ headerShown: false }}
-  component={() => (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: '#1A3A5C' },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '700' },
-      }}
-    >
-      <Stack.Screen
-        name="HomeMain"
-        component={HomeScreen}
-        options={{ title: 'Home' }}
-      />
-      <Stack.Screen
-        name="Sezioni"
-        component={SezioniScreen}
-        options={({ route }: any) => ({ title: (route.params as any)?.moduloTitolo })}
-      />
-      <Stack.Screen
-        name="DettaglioSezione"
-        component={DettaglioSezioneScreen}
-        options={({ route }: any) => ({ title: (route.params as any)?.sezioneTitolo })}
-      />
-      <Stack.Screen
-        name="QuizSessione"
-        component={QuizSessioneScreen}
-        options={({ route }: any) => ({ title: (route.params as any)?.sezioneTitolo })}
-      />
-    </Stack.Navigator>
-  )}
-/>
+          name="Home"
+          options={{ headerShown: false }}
+          component={HomeStackNavigator}
+        />
         <Tab.Screen name="Quiz"      component={QuizScreen} />
         <Tab.Screen name="Chatbot"   component={ChatbotScreen} options={{ title: 'Assistente IVA' }} />
         <Tab.Screen name="Community" component={CommunityScreen} />

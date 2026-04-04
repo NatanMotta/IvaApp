@@ -1,0 +1,62 @@
+# IvaApp
+
+App mobile Expo/React Native per studio IVA con:
+- autenticazione utente (Supabase Auth)
+- moduli e sezioni didattiche
+- sessioni quiz con salvataggio risposte/progresso
+
+## Requisiti
+
+- Node.js 20+ (consigliato LTS)
+- npm 10+
+- Expo Go (device) oppure emulatori Android/iOS
+- progetto Supabase configurato
+
+## Setup
+
+1. Installa dipendenze:
+
+```bash
+npm install
+```
+
+2. Crea file `.env` nella root progetto:
+
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+```
+
+3. Avvia app:
+
+```bash
+npm run start
+```
+
+Script utili:
+- `npm run android`
+- `npm run ios`
+- `npm run web`
+
+## Struttura principale
+
+- `App.tsx`: bootstrap auth + navigator tab/stack
+- `lib/supabase.ts`: client Supabase
+- `screens/AuthScreen.tsx`: login/registrazione
+- `screens/HomeScreen.tsx`: elenco moduli
+- `screens/SezioniScreen.tsx`: elenco sezioni per modulo
+- `screens/DettaglioSezioneScreen.tsx`: contenuti didattici sezione
+- `screens/QuizSessioneScreen.tsx`: quiz interattivo e salvataggio risposte
+- `screens/ProfiloScreen.tsx`: logout
+
+## Tabelle Supabase attese
+
+L’app usa queste tabelle:
+- `profiles`
+- `moduli`
+- `sezioni`
+- `quiz`
+- `risposte_utente`
+- `quiz_da_correggere`
+
+Assicurati che policy RLS e permessi siano coerenti con i flussi di lettura/scrittura dell’utente autenticato.

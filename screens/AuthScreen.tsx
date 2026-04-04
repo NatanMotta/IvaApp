@@ -30,7 +30,10 @@ export default function AuthScreen() {
 
   // ── REGISTRAZIONE ──────────────────────────────────────────
   async function handleRegistrazione() {
-    if (!email || !password || !nome) {
+    const emailPulita = email.trim().toLowerCase();
+    const nomePulito = nome.trim();
+
+    if (!emailPulita || !password || !nomePulito) {
       Alert.alert('Errore', 'Compila tutti i campi');
       return;
     }
@@ -39,10 +42,10 @@ export default function AuthScreen() {
 
     // Crea l'utente in Supabase Auth
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: emailPulita,
       password,
       options: {
-        data: { nome }, // dati extra salvati nel profilo
+        data: { nome: nomePulito }, // dati extra salvati nel profilo
       },
     });
 
@@ -54,11 +57,20 @@ export default function AuthScreen() {
 
     // Crea il profilo nella tabella profiles
     if (data.user) {
-      await supabase.from('profiles').insert({
+      const { error: profileError } = await supabase.from('profiles').insert({
         id: data.user.id,
-        email,
-        nome,
+        email: emailPulita,
+        nome: nomePulito,
       });
+
+      if (profileError) {
+        Alert.alert(
+          'Registrazione incompleta',
+          'Account creato, ma il profilo non è stato inizializzato. Contatta il supporto o riprova.'
+        );
+        setLoading(false);
+        return;
+      }
     }
 
     Alert.alert(
@@ -76,7 +88,9 @@ export default function AuthScreen() {
 
   // ── LOGIN ──────────────────────────────────────────────────
   async function handleLogin() {
-    if (!email || !password) {
+    const emailPulita = email.trim().toLowerCase();
+
+    if (!emailPulita || !password) {
       Alert.alert('Errore', 'Inserisci email e password');
       return;
     }
@@ -84,7 +98,7 @@ export default function AuthScreen() {
     setLoading(true);
 
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: emailPulita,
       password,
     });
 
