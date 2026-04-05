@@ -13,11 +13,11 @@ import AuthScreen from './screens/AuthScreen';
 import HomeScreen from './screens/HomeScreen';
 import QuizScreen from './screens/QuizScreen';
 import ChatbotScreen from './screens/ChatbotScreen';
-import CommunityScreen from './screens/CommunityScreen';
 import ProfiloScreen from './screens/ProfiloScreen';
 import SezioniScreen from './screens/SezioniScreen';
 import DettaglioSezioneScreen from './screens/DettaglioSezioneScreen';
 import QuizSessioneScreen from './screens/QuizSessioneScreen';
+import RipassoScreen from './screens/RipassoScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -56,6 +56,29 @@ function HomeStackNavigator() {
         name="QuizSessione"
         component={QuizSessioneScreen}
         options={({ route }: any) => ({ title: (route.params as any)?.sezioneTitolo })}
+      />
+    </Stack.Navigator>
+  );
+}
+
+function RipassoStackNavigator() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#1A3A5C' },
+        headerTintColor: '#fff',
+        headerTitleStyle: { fontWeight: '700' },
+      }}
+    >
+      <Stack.Screen
+        name="RipassoMain"
+        component={RipassoScreen}
+        options={{ title: 'Ripasso Errori' }}
+      />
+      <Stack.Screen
+        name="QuizSessioneRipasso"
+        component={QuizSessioneScreen}
+        options={{ title: 'Sprint Ripasso' }}
       />
     </Stack.Navigator>
   );
@@ -107,7 +130,7 @@ export default function App() {
               Home:      'home-outline',
               Quiz:      'checkbox-outline',
               Chatbot:   'chatbubble-ellipses-outline',
-              Community: 'people-outline',
+              Ripasso:   'refresh-circle-outline',
               Profilo:   'person-outline',
             };
             return <Ionicons name={icons[route.name]} size={size} color={color} />;
@@ -134,7 +157,11 @@ export default function App() {
         />
         <Tab.Screen name="Quiz"      component={QuizScreen} />
         <Tab.Screen name="Chatbot"   component={ChatbotScreen} options={{ title: 'Assistente IVA' }} />
-        <Tab.Screen name="Community" component={CommunityScreen} />
+        <Tab.Screen
+          name="Ripasso"
+          options={{ headerShown: false, title: 'Ripasso Errori' }}
+          component={RipassoStackNavigator}
+        />
         <Tab.Screen name="Profilo"   component={ProfiloScreen} options={{ title: 'Il mio profilo' }} />
       </Tab.Navigator>
     </NavigationContainer>

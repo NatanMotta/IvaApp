@@ -24,8 +24,10 @@ type Quiz = {
   spiegazione: string;
 };
 
+const QUIZ_PER_SPRINT = 20;
+
 export default function QuizSessioneScreen({ route, navigation }: any) {
-  const { sezioneId, sezioneTitolo } = route.params;
+  const { sezioneId, sezioneTitolo, moduloId, isRipassoErrori } = route.params;
 
   const [quiz, setQuiz] = useState<Quiz[]>([]);
   const [indiceAttuale, setIndiceAttuale] = useState(0);
@@ -39,21 +41,90 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
   }, []);
 
   async function caricaQuiz() {
-    const { data, error } = await supabase
-      .from('quiz')
-      .select('*')
-      .eq('sezione_id', sezioneId)
-      .eq('is_attivo', true);
+    try {
+      if (isRipassoErrori) {
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+        if (authError || !authData.user) {
+          if (authError) console.error('Errore utente:', authError.message);
+          setQuiz([]);
+          return;
+        }
 
-    if (error) {
-      console.error('Errore caricamento quiz:', error.message);
-    } else {
-      // Mescola i quiz in ordine casuale
-      const mescolati = (data || []).sort(() => Math.random() - 0.5);
-      setQuiz(mescolati);
+        const userId = authData.user.id;
+
+        const { data: sezioniModulo, error: sezioniError } = await supabase
+          .from('sezioni')
+          .select('id')
+          .eq('modulo_id', moduloId)
+          .eq('is_attivo', true);
+
+        if (sezioniError) {
+          console.error('Errore caricamento sezioni modulo:', sezioniError.message);
+          setQuiz([]);
+          return;
+        }
+
+        const idsSezioni = (sezioniModulo || []).map((s: { id: number }) => s.id);
+        if (idsSezioni.length === 0) {
+          setQuiz([]);
+          return;
+        }
+
+        const { data: erroriData, error: erroriQueryError } = await supabase
+          .from('quiz_da_correggere')
+          .select('quiz_id')
+          .eq('user_id', userId);
+
+        if (erroriQueryError) {
+          console.error('Errore caricamento quiz da correggere:', erroriQueryError.message);
+          setQuiz([]);
+          return;
+        }
+
+        const idsQuizDaCorreggere = (erroriData || []).map((q: { quiz_id: number }) => q.quiz_id);
+        if (idsQuizDaCorreggere.length === 0) {
+          setQuiz([]);
+          return;
+        }
+
+        const { data: quizData, error: quizError } = await supabase
+          .from('quiz')
+          .select('*')
+          .in('id', idsQuizDaCorreggere)
+          .in('sezione_id', idsSezioni)
+          .eq('is_attivo', true);
+
+        if (quizError) {
+          console.error('Errore caricamento quiz ripasso:', quizError.message);
+          setQuiz([]);
+          return;
+        }
+
+        const sprint = (quizData || [])
+          .sort(() => Math.random() - 0.5)
+          .slice(0, QUIZ_PER_SPRINT);
+        setQuiz(sprint);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('quiz')
+        .select('*')
+        .eq('sezione_id', sezioneId)
+        .eq('is_attivo', true);
+
+      if (error) {
+        console.error('Errore caricamento quiz:', error.message);
+      } else {
+        // Sprint standard: max 20 quiz casuali
+        const sprint = (data || [])
+          .sort(() => Math.random() - 0.5)
+          .slice(0, QUIZ_PER_SPRINT);
+        setQuiz(sprint);
+      }
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   async function handleRisposta(opzione: string) {
@@ -95,10 +166,12 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
         });
 
         if (correggereError) {
-          Alert.alert(
-            'Aggiornamento parziale',
-            'Risposta salvata, ma la lista "da correggere" non è stata aggiornata.'
-          );
+          if (!isRipassoErrori) {
+            Alert.alert(
+              'Aggiornamento parziale',
+              'Risposta salvata, ma la lista "da correggere" non è stata aggiornata.'
+            );
+          }
         }
       } else {
         // Se corretto → rimuove da quiz_da_correggere (se era presente)
@@ -138,7 +211,11 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
   if (quiz.length === 0) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.testoVuoto}>Nessun quiz disponibile per questa sezione.</Text>
+        <Text style={styles.testoVuoto}>
+          {isRipassoErrori
+            ? 'Nessun errore da ripassare al momento. Ottimo lavoro!'
+            : 'Nessun quiz disponibile per questa sezione.'}
+        </Text>
       </View>
     );
   }

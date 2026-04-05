@@ -21,14 +21,15 @@ type Sezione = {
 };
 
 export default function DettaglioSezioneScreen({ route, navigation }: any) {
-  const { sezioneId, sezioneTitolo } = route.params;
+  const { sezioneId, sezioneTitolo, moduloId, isRipassoErrori } = route.params;
 
   const [sezione, setSezione] = useState<Sezione | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isRipassoErrori);
 
   useEffect(() => {
+    if (isRipassoErrori) return;
     caricaSezione();
-  }, []);
+  }, [isRipassoErrori]);
 
   async function caricaSezione() {
     const { data, error } = await supabase
@@ -51,6 +52,38 @@ export default function DettaglioSezioneScreen({ route, navigation }: any) {
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#2E86AB" />
       </View>
+    );
+  }
+
+  if (isRipassoErrori) {
+    return (
+      <ScrollView style={styles.container}>
+        <View style={styles.sezione}>
+          <Text style={styles.sezioneLabel}>🔁 Sprint Ripasso Errori</Text>
+          <Text style={styles.testo}>
+            Questa modalità crea sprint da 20 quiz basati sulle domande che hai sbagliato nel primo modulo.
+          </Text>
+        </View>
+
+        <View style={styles.sezione}>
+          <Text style={styles.sezioneLabel}>✅ Come funziona</Text>
+          <Text style={styles.testo}>
+            Ogni risposta corretta viene rimossa automaticamente dalla lista di ripasso.
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={styles.bottone}
+          onPress={() => navigation.push('QuizSessione', {
+            sezioneId,
+            sezioneTitolo,
+            moduloId,
+            isRipassoErrori: true,
+          })}
+        >
+          <Text style={styles.bottoneText}>Inizia il ripasso →</Text>
+        </TouchableOpacity>
+      </ScrollView>
     );
   }
 
@@ -79,6 +112,8 @@ export default function DettaglioSezioneScreen({ route, navigation }: any) {
         onPress={() => navigation.push('QuizSessione', {
           sezioneId,
           sezioneTitolo,
+          moduloId,
+          isRipassoErrori: false,
         })}
       >
         <Text style={styles.bottoneText}>Inizia i quiz →</Text>

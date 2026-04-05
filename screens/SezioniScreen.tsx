@@ -57,6 +57,11 @@ export default function SezioniScreen({ route, navigation }: any) {
 
   return (
     <View style={styles.container}>
+      <View style={styles.headerBox}>
+        <Text style={styles.headerTitle}>{moduloTitolo}</Text>
+        <Text style={styles.headerSubtitle}>Scegli una sezione per iniziare la prossima sprint.</Text>
+      </View>
+
       <FlatList
         data={sezioni}
         keyExtractor={(item) => item.id.toString()}
@@ -66,13 +71,26 @@ export default function SezioniScreen({ route, navigation }: any) {
             onPress={() => navigation.navigate('DettaglioSezione', {
               sezioneId: item.id,
               sezioneTitolo: item.titolo,
+              moduloId,
+              isRipassoErrori: false,
             })}
           >
-            <Text style={styles.cardTitolo}>{item.titolo}</Text>
-            <Text style={styles.cardArrow}>→</Text>
+            <View style={styles.cardTopRow}>
+              <Text style={styles.cardTitolo}>{item.titolo}</Text>
+              <Text style={styles.cardBadge}>Lezione</Text>
+            </View>
+            <Text style={styles.cardDescrizione}>
+              {item.descrizione || 'Apri la sezione per contenuto, schema e quiz a sprint.'}
+            </Text>
+            <Text style={styles.cardArrow}>Apri sezione →</Text>
           </TouchableOpacity>
         )}
-        contentContainerStyle={{ padding: 16, gap: 12 }}
+        ListEmptyComponent={
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>Nessuna sezione disponibile per questo modulo.</Text>
+          </View>
+        }
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, gap: 12 }}
       />
     </View>
   );
@@ -81,30 +99,81 @@ export default function SezioniScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F3F6FA',
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  headerBox: {
+    backgroundColor: '#1A3A5C',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 18,
+    marginBottom: 12,
+  },
+  headerTitle: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    color: '#D2DFED',
+    fontSize: 14,
+  },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#D7E2EE',
+  },
+  cardTopRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   cardTitolo: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
     color: '#1A3A5C',
   },
-  cardArrow: {
-    fontSize: 18,
+  cardBadge: {
+    backgroundColor: '#E7F4FA',
     color: '#2E86AB',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  cardDescrizione: {
+    fontSize: 14,
+    color: '#425466',
+    lineHeight: 20,
+    marginBottom: 10,
+  },
+  cardArrow: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#2E86AB',
+  },
+  emptyBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D7E2EE',
+    padding: 16,
+  },
+  emptyText: {
+    color: '#6B7280',
+    textAlign: 'center',
+    fontSize: 15,
   },
 });

@@ -64,7 +64,10 @@ export default function HomeScreen({ navigation }: any) {
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.card}
-            onPress={() => navigation.navigate('Sezioni', { moduloId: item.id, moduloTitolo: item.titolo })}
+            onPress={() => navigation.navigate('Sezioni', {
+              moduloId: item.id,
+              moduloTitolo: item.titolo,
+            })}
           >
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitolo}>{item.titolo}</Text>
