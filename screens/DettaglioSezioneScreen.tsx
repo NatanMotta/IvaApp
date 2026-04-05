@@ -2,7 +2,6 @@
 // Mostra il dettaglio di una sezione: mini-lezione, schema riassuntivo
 // e bottone per iniziare i quiz.
 
-import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -11,46 +10,25 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { supabase } from '../lib/supabase';
-
-type Sezione = {
-  id: number;
-  titolo: string;
-  lezione_testo: string;
-  schema_testo: string;
-};
+import { useDettaglioSezione } from '../hooks/useSezioni';
 
 export default function DettaglioSezioneScreen({ route, navigation }: any) {
   const { sezioneId, sezioneTitolo, moduloId, isRipassoErrori } = route.params;
 
-  const [sezione, setSezione] = useState<Sezione | null>(null);
-  const [loading, setLoading] = useState(!isRipassoErrori);
+  const { data: sezione, isLoading, isError } = useDettaglioSezione(isRipassoErrori ? 0 : sezioneId);
 
-  useEffect(() => {
-    if (isRipassoErrori) return;
-    caricaSezione();
-  }, [isRipassoErrori]);
-
-  async function caricaSezione() {
-    const { data, error } = await supabase
-      .from('sezioni')
-      .select('*')
-      .eq('id', sezioneId)
-      .single(); // restituisce un oggetto singolo invece di un array
-
-    if (error) {
-      console.error('Errore:', error.message);
-    } else {
-      setSezione(data);
-    }
-
-    setLoading(false);
-  }
-
-  if (loading) {
+  if (isLoading && !isRipassoErrori) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#2E86AB" />
+      </View>
+    );
+  }
+
+  if (isError && !isRipassoErrori) {
+    return (
+      <View style={styles.centered}>
+        <Text style={{ color: 'red' }}>Errore nel caricamento del dettaglio.</Text>
       </View>
     );
   }

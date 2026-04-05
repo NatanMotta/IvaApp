@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { View, ActivityIndicator } from 'react-native';
 import { Session } from '@supabase/supabase-js';
 import { createStackNavigator } from '@react-navigation/stack';
-
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { supabase } from './lib/supabase';
 import AuthScreen from './screens/AuthScreen';
@@ -22,19 +22,29 @@ import RipassoScreen from './screens/RipassoScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minuti
+    },
+  },
+});
+
 const COLORS = {
   primary: '#1A3A5C',
   accent: '#2E86AB',
   inactive: '#9BA3AF',
 };
 
+import { theme } from './lib/theme';
+
 function HomeStackNavigator() {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: '#1A3A5C' },
+        headerStyle: { backgroundColor: theme.colors.primary, shadowOpacity: 0, elevation: 0 },
         headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '700' },
+        headerTitleStyle: { fontWeight: '800' },
       }}
     >
       <Stack.Screen
@@ -65,9 +75,9 @@ function RipassoStackNavigator() {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: '#1A3A5C' },
+        headerStyle: { backgroundColor: theme.colors.primary, shadowOpacity: 0, elevation: 0 },
         headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '700' },
+        headerTitleStyle: { fontWeight: '800' },
       }}
     >
       <Stack.Screen
@@ -84,7 +94,7 @@ function RipassoStackNavigator() {
   );
 }
 
-export default function App() {
+function MainApp() {
   // null = stiamo ancora controllando, Session = loggato, false = non loggato
   const [session, setSession] = useState<Session | null | false>(null);
 
@@ -110,7 +120,7 @@ export default function App() {
   if (session === null) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#2E86AB" />
+        <ActivityIndicator size="large" color={theme.colors.accent} />
       </View>
     );
   }
@@ -125,30 +135,31 @@ export default function App() {
     <NavigationContainer>
       <Tab.Navigator
         screenOptions={({ route }) => ({
-          tabBarIcon: ({ color, size }) => {
+          tabBarIcon: ({ color, size, focused }) => {
             const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
-              Home:      'home-outline',
-              Quiz:      'checkbox-outline',
-              Chatbot:   'chatbubble-ellipses-outline',
-              Ripasso:   'refresh-circle-outline',
-              Profilo:   'person-outline',
+              Home:      focused ? 'home' : 'home-outline',
+              Quiz:      focused ? 'checkbox' : 'checkbox-outline',
+              Chatbot:   focused ? 'chatbubble-ellipses' : 'chatbubble-ellipses-outline',
+              Ripasso:   focused ? 'refresh-circle' : 'refresh-circle-outline',
+              Profilo:   focused ? 'person' : 'person-outline',
             };
-            return <Ionicons name={icons[route.name]} size={size} color={color} />;
+            // Ingrandiamo leggermente l'icona selezionata
+            return <Ionicons name={icons[route.name]} size={focused ? size + 2 : size} color={color} />;
           },
-          tabBarActiveTintColor: COLORS.accent,
-          tabBarInactiveTintColor: COLORS.inactive,
+          tabBarActiveTintColor: theme.colors.accent,
+          tabBarInactiveTintColor: theme.colors.textMuted,
           tabBarStyle: {
             backgroundColor: '#FFFFFF',
-            borderTopColor: '#E5E7EB',
-            height: 60,
-            paddingBottom: 8,
-            paddingTop: 4,
+            borderTopWidth: 0,
+            paddingTop: 8,
+            ...theme.shadows.premium,
           },
-          tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
-          headerStyle: { backgroundColor: COLORS.primary },
+          tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
+          headerStyle: { backgroundColor: theme.colors.primary, shadowOpacity: 0, elevation: 0 },
           headerTintColor: '#FFFFFF',
-          headerTitleStyle: { fontWeight: '700' },
+          headerTitleStyle: { fontWeight: '800' },
         })}
+
       >
         <Tab.Screen
           name="Home"
@@ -165,5 +176,13 @@ export default function App() {
         <Tab.Screen name="Profilo"   component={ProfiloScreen} options={{ title: 'Il mio profilo' }} />
       </Tab.Navigator>
     </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <MainApp />
+    </QueryClientProvider>
   );
 }

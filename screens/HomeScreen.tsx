@@ -2,86 +2,69 @@
 // Schermata principale — mostra i moduli IVA disponibili.
 // Ogni modulo porta a una lista di sezioni.
 
-import { useEffect, useState } from 'react';
 import {
   View,
   Text,
   FlatList,
-  TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
 } from 'react-native';
-import { supabase } from '../lib/supabase';
-
-// Definiamo il tipo di un modulo — equivale a una struct in C
-type Modulo = {
-  id: number;
-  titolo: string;
-  descrizione: string;
-  ordine: number;
-  is_premium: boolean;
-};
+import { useModuli } from '../hooks/useModuli';
+import { theme } from '../lib/theme';
+import { PremiumCard } from '../components/PremiumCard';
+import { Skeleton } from '../components/Skeleton';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function HomeScreen({ navigation }: any) {
-  const [moduli, setModuli] = useState<Modulo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: moduli = [], isLoading, isError } = useModuli();
 
-  useEffect(() => {
-    caricaModuli();
-  }, []);
-
-  async function caricaModuli() {
-    const { data, error } = await supabase
-      .from('moduli')
-      .select('*')
-      .eq('is_attivo', true)
-      .order('ordine');
-
-    if (error) {
-      console.error('Errore caricamento moduli:', error.message);
-    } else {
-      setModuli(data || []);
-    }
-
-    setLoading(false);
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient colors={[theme.colors.primary, theme.colors.primaryLight]} style={styles.heroBox}>
+          <Skeleton width="60%" height={28} borderRadius={8} style={{ marginBottom: 8, opacity: 0.5 }} />
+          <Skeleton width="40%" height={16} borderRadius={4} style={{ opacity: 0.4 }} />
+        </LinearGradient>
+        <View style={styles.listContainer}>
+           <Skeleton height={120} borderRadius={theme.borderRadius.lg} style={{ marginBottom: 16 }} />
+           <Skeleton height={120} borderRadius={theme.borderRadius.lg} style={{ marginBottom: 16 }} />
+           <Skeleton height={120} borderRadius={theme.borderRadius.lg} />
+        </View>
+      </View>
+    );
   }
 
-  if (loading) {
+  if (isError) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#2E86AB" />
+        <Text style={{ color: theme.colors.error }}>Errore nel caricamento dei moduli.</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.benvenuto}>I tuoi moduli IVA</Text>
+      <LinearGradient colors={[theme.colors.primary, '#244d7a']} style={styles.heroBox} start={{x: 0, y: 0}} end={{x: 1, y: 1}}>
+        <Text style={styles.heroTitle}>I tuoi moduli IVA</Text>
+        <Text style={styles.heroSubtitle}>Seleziona un modulo per imparare e allenarti.</Text>
+      </LinearGradient>
 
       <FlatList
         data={moduli}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.card}
+          <PremiumCard
+            title={item.titolo}
+            description={item.descrizione}
+            badge={item.is_premium ? 'PRO' : undefined}
+            badgeType={item.is_premium ? 'warning' : 'primary'}
             onPress={() => navigation.navigate('Sezioni', {
               moduloId: item.id,
               moduloTitolo: item.titolo,
             })}
-          >
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitolo}>{item.titolo}</Text>
-              {item.is_premium && (
-                <View style={styles.premiumBadge}>
-                  <Text style={styles.premiumText}>PRO</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.cardDescrizione}>{item.descrizione}</Text>
-            <Text style={styles.cardArrow}>→</Text>
-          </TouchableOpacity>
+          />
         )}
-        contentContainerStyle={{ padding: 16, gap: 12 }}
+        contentContainerStyle={styles.listContainer}
+        showsVerticalScrollIndicator={false}
       />
     </View>
   );
@@ -90,57 +73,36 @@ export default function HomeScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: theme.colors.background,
   },
-  benvenuto: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1A3A5C',
-    padding: 16,
-    paddingBottom: 4,
+  heroBox: {
+    padding: 24,
+    paddingTop: 32,
+    borderBottomLeftRadius: theme.borderRadius.xl,
+    borderBottomRightRadius: theme.borderRadius.xl,
+    ...theme.shadows.mild,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  heroTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#FFF',
     marginBottom: 6,
   },
-  cardTitolo: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1A3A5C',
-  },
-  cardDescrizione: {
-    fontSize: 14,
-    color: '#6B7280',
+  heroSubtitle: {
+    fontSize: 15,
+    color: '#D2DFED',
     marginBottom: 8,
   },
-  cardArrow: {
-    fontSize: 18,
-    color: '#2E86AB',
-    textAlign: 'right',
-  },
-  premiumBadge: {
-    backgroundColor: '#F59E0B',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  premiumText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
+  listContainer: {
+    padding: 16,
+    gap: 16,
+    paddingTop: 24,
+    paddingBottom: 40,
   },
 });

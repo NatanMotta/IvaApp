@@ -2,7 +2,7 @@
 // Schermata di sessione quiz — mostra un quiz alla volta.
 // L'utente risponde, vede il feedback immediato, poi passa al successivo.
 
-import { useEffect, useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,119 +13,24 @@ import {
   Alert,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
-
-type Quiz = {
-  id: number;
-  domanda: string;
-  opzione_a: string;
-  opzione_b: string;
-  opzione_c: string;
-  risposta_corretta: string;
-  spiegazione: string;
-};
-
-const QUIZ_PER_SPRINT = 20;
+import { useQuizSessione } from '../hooks/useQuiz';
+import * as Haptics from 'expo-haptics';
+import { theme } from '../lib/theme';
 
 export default function QuizSessioneScreen({ route, navigation }: any) {
   const { sezioneId, sezioneTitolo, moduloId, isRipassoErrori } = route.params;
+  const scrollViewRef = useRef<ScrollView>(null);
 
-  const [quiz, setQuiz] = useState<Quiz[]>([]);
+  const { data: quiz = [], isLoading, isError, refetch } = useQuizSessione(
+    isRipassoErrori ? 0 : sezioneId,
+    isRipassoErrori,
+    moduloId
+  );
+
   const [indiceAttuale, setIndiceAttuale] = useState(0);
   const [rispostaScelta, setRispostaScelta] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [punteggio, setPunteggio] = useState(0);
   const [sessioneFinita, setSessioneFinita] = useState(false);
-
-  useEffect(() => {
-    caricaQuiz();
-  }, []);
-
-  async function caricaQuiz() {
-    try {
-      if (isRipassoErrori) {
-        const { data: authData, error: authError } = await supabase.auth.getUser();
-        if (authError || !authData.user) {
-          if (authError) console.error('Errore utente:', authError.message);
-          setQuiz([]);
-          return;
-        }
-
-        const userId = authData.user.id;
-
-        const { data: sezioniModulo, error: sezioniError } = await supabase
-          .from('sezioni')
-          .select('id')
-          .eq('modulo_id', moduloId)
-          .eq('is_attivo', true);
-
-        if (sezioniError) {
-          console.error('Errore caricamento sezioni modulo:', sezioniError.message);
-          setQuiz([]);
-          return;
-        }
-
-        const idsSezioni = (sezioniModulo || []).map((s: { id: number }) => s.id);
-        if (idsSezioni.length === 0) {
-          setQuiz([]);
-          return;
-        }
-
-        const { data: erroriData, error: erroriQueryError } = await supabase
-          .from('quiz_da_correggere')
-          .select('quiz_id')
-          .eq('user_id', userId);
-
-        if (erroriQueryError) {
-          console.error('Errore caricamento quiz da correggere:', erroriQueryError.message);
-          setQuiz([]);
-          return;
-        }
-
-        const idsQuizDaCorreggere = (erroriData || []).map((q: { quiz_id: number }) => q.quiz_id);
-        if (idsQuizDaCorreggere.length === 0) {
-          setQuiz([]);
-          return;
-        }
-
-        const { data: quizData, error: quizError } = await supabase
-          .from('quiz')
-          .select('*')
-          .in('id', idsQuizDaCorreggere)
-          .in('sezione_id', idsSezioni)
-          .eq('is_attivo', true);
-
-        if (quizError) {
-          console.error('Errore caricamento quiz ripasso:', quizError.message);
-          setQuiz([]);
-          return;
-        }
-
-        const sprint = (quizData || [])
-          .sort(() => Math.random() - 0.5)
-          .slice(0, QUIZ_PER_SPRINT);
-        setQuiz(sprint);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('quiz')
-        .select('*')
-        .eq('sezione_id', sezioneId)
-        .eq('is_attivo', true);
-
-      if (error) {
-        console.error('Errore caricamento quiz:', error.message);
-      } else {
-        // Sprint standard: max 20 quiz casuali
-        const sprint = (data || [])
-          .sort(() => Math.random() - 0.5)
-          .slice(0, QUIZ_PER_SPRINT);
-        setQuiz(sprint);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function handleRisposta(opzione: string) {
     if (rispostaScelta) return; // evita doppio tap
@@ -136,8 +41,16 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
     const isCorretta = opzione === quizAttuale.risposta_corretta;
 
     if (isCorretta) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPunteggio(p => p + 1);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
+
+    // Scrolla automaticamente verso il basso dopo che il componente renderizza la spiegazione
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 150);
 
     // Salva la risposta nel database
     const { data: { user } } = await supabase.auth.getUser();
@@ -190,6 +103,7 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
   }
 
   function handleAvanti() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (indiceAttuale + 1 >= quiz.length) {
       setSessioneFinita(true);
     } else {
@@ -199,10 +113,18 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
   }
 
   // ── LOADING ────────────────────────────────────────────────
-  if (loading) {
+  if (isLoading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#2E86AB" />
+        <ActivityIndicator size="large" color={theme.colors.accent} />
+      </View>
+    );
+  }
+
+  if (isError) {
+    return (
+      <View style={styles.centered}>
+        <Text style={{ color: theme.colors.error }}>Errore caricamento quiz.</Text>
       </View>
     );
   }
@@ -236,20 +158,25 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
 
         <TouchableOpacity
           style={styles.bottone}
-          onPress={() => navigation.goBack()}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            navigation.goBack();
+          }}
         >
           <Text style={styles.bottoneText}>Torna alla sezione</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.bottone, styles.bottoneSecondario]}
-          onPress={() => {
+          onPress={async () => {
+             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+             // Forza l'aggiornamento dei quiz
+            await refetch();
             // Riinizia la sessione
             setIndiceAttuale(0);
             setRispostaScelta(null);
             setPunteggio(0);
             setSessioneFinita(false);
-            setQuiz(q => [...q].sort(() => Math.random() - 0.5));
           }}
         >
           <Text style={styles.bottoneTestoSecondario}>Rifai i quiz</Text>
@@ -267,7 +194,11 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
   ];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView 
+      ref={scrollViewRef}
+      style={styles.container} 
+      contentContainerStyle={styles.content}
+    >
 
       {/* Progresso */}
       <View style={styles.progressoContainer}>
@@ -285,23 +216,23 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
       </View>
 
       {/* Domanda */}
-      <View style={styles.domandaCard}>
+      <View style={[styles.domandaCard, theme.shadows.mild]}>
         <Text style={styles.domandaTesto}>{quizAttuale.domanda}</Text>
       </View>
 
       {/* Opzioni */}
       {opzioni.map((opzione) => {
         // Calcola il colore dell'opzione dopo la risposta
-        let stileOpzione = styles.opzione;
-        let stileTesto = styles.opzioneTesto;
+        let stileOpzione: any = styles.opzione;
+        let stileTesto: any = styles.opzioneTesto;
 
         if (rispostaScelta) {
           if (opzione.key === quizAttuale.risposta_corretta) {
-            stileOpzione = { ...styles.opzione, ...styles.opzioneCorretta };
-            stileTesto = { ...styles.opzioneTesto, ...styles.opzioneTestoCorretta };
+            stileOpzione = [styles.opzione, styles.opzioneCorretta];
+            stileTesto = [styles.opzioneTesto, styles.opzioneTestoCorretta];
           } else if (opzione.key === rispostaScelta) {
-            stileOpzione = { ...styles.opzione, ...styles.opzioneErrata };
-            stileTesto = { ...styles.opzioneTesto, ...styles.opzioneTestoErrata };
+            stileOpzione = [styles.opzione, styles.opzioneErrata];
+            stileTesto = [styles.opzioneTesto, styles.opzioneTestoErrata];
           }
         }
 
@@ -311,6 +242,7 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
             style={stileOpzione}
             onPress={() => handleRisposta(opzione.key)}
             disabled={!!rispostaScelta}
+            activeOpacity={0.7}
           >
             <Text style={styles.opzioneLabel}>{opzione.key.toUpperCase()})</Text>
             <Text style={stileTesto}>{opzione.testo}</Text>
@@ -323,14 +255,14 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
         <View>
           {quizAttuale.spiegazione && (
             <View style={styles.spiegazioneCard}>
-              <Text style={styles.spiegazioneLabel}>💡 Spiegazione</Text>
+               <Text style={styles.spiegazioneLabel}>💡 Spiegazione</Text>
               <Text style={styles.spiegazioneTesto}>{quizAttuale.spiegazione}</Text>
             </View>
           )}
 
-          <TouchableOpacity style={styles.bottone} onPress={handleAvanti}>
+          <TouchableOpacity style={styles.bottone} onPress={handleAvanti} activeOpacity={0.8}>
             <Text style={styles.bottoneText}>
-              {indiceAttuale + 1 >= quiz.length ? 'Vedi risultato' : 'Avanti →'}
+              {indiceAttuale + 1 >= quiz.length ? 'Vedi risultato' : 'Prossima domanda →'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -341,67 +273,67 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FAFB' },
-  content: { padding: 16, gap: 12 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  testoVuoto: { fontSize: 16, color: '#6B7280', textAlign: 'center' },
+  container: { flex: 1, backgroundColor: theme.colors.background },
+  content: { padding: 16, gap: 16, paddingBottom: 40 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background },
+  testoVuoto: { fontSize: 16, color: theme.colors.textSecondary, textAlign: 'center' },
 
   // Progresso
   progressoContainer: { marginBottom: 4 },
-  progressoTesto: { fontSize: 13, color: '#6B7280', marginBottom: 6, textAlign: 'right' },
-  progressoBar: { height: 6, backgroundColor: '#E5E7EB', borderRadius: 3 },
-  progressoFill: { height: 6, backgroundColor: '#2E86AB', borderRadius: 3 },
+  progressoTesto: { fontSize: 13, color: theme.colors.textSecondary, marginBottom: 8, textAlign: 'right', fontWeight: '600' },
+  progressoBar: { height: 8, backgroundColor: theme.colors.border, borderRadius: 4, overflow: 'hidden' },
+  progressoFill: { height: 8, backgroundColor: theme.colors.accent, borderRadius: 4 },
 
   // Domanda
   domandaCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.borderRadius.lg,
+    padding: 20,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#e2e8f0',
   },
-  domandaTesto: { fontSize: 16, color: '#1A3A5C', fontWeight: '600', lineHeight: 24 },
+  domandaTesto: { fontSize: 18, color: theme.colors.text, fontWeight: '700', lineHeight: 26 },
 
   // Opzioni
   opzione: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.borderRadius.md,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: theme.colors.border,
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
+    alignItems: 'center',
+    gap: 12,
   },
-  opzioneCorretta: { backgroundColor: '#D1FAE5', borderColor: '#10B981' },
-  opzioneErrata: { backgroundColor: '#FEE2E2', borderColor: '#EF4444' },
-  opzioneLabel: { fontSize: 15, fontWeight: '700', color: '#6B7280', minWidth: 20 },
-  opzioneTesto: { fontSize: 15, color: '#374151', flex: 1 },
-  opzioneTestoCorretta: { color: '#065F46' },
-  opzioneTestoErrata: { color: '#991B1B' },
+  opzioneCorretta: { backgroundColor: theme.colors.successBg, borderColor: theme.colors.success },
+  opzioneErrata: { backgroundColor: theme.colors.errorBg, borderColor: theme.colors.error },
+  opzioneLabel: { fontSize: 16, fontWeight: '800', color: theme.colors.textMuted, minWidth: 24 },
+  opzioneTesto: { fontSize: 16, color: theme.colors.text, flex: 1, fontWeight: '500' },
+  opzioneTestoCorretta: { color: theme.colors.success, fontWeight: '700' },
+  opzioneTestoErrata: { color: theme.colors.error, fontWeight: '700' },
 
   // Spiegazione
   spiegazioneCard: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: '#F0F9FF',
+    borderRadius: theme.borderRadius.md,
+    padding: 16,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: '#BAE6FD',
   },
-  spiegazioneLabel: { fontSize: 14, fontWeight: '700', color: '#1E40AF', marginBottom: 6 },
-  spiegazioneTesto: { fontSize: 14, color: '#1E3A8A', lineHeight: 20 },
+  spiegazioneLabel: { fontSize: 14, fontWeight: '800', color: '#0369A1', marginBottom: 6 },
+  spiegazioneTesto: { fontSize: 15, color: '#0C4A6E', lineHeight: 22 },
 
   // Bottoni
   bottone: {
-    backgroundColor: '#2E86AB',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: theme.colors.accent,
+    borderRadius: theme.borderRadius.md,
+    padding: 18,
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 8,
   },
   bottoneText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  bottoneSecondario: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#2E86AB' },
-  bottoneTestoSecondario: { color: '#2E86AB', fontSize: 16, fontWeight: '700' },
+  bottoneSecondario: { backgroundColor: 'transparent', borderWidth: 0, marginTop: 4 },
+  bottoneTestoSecondario: { color: theme.colors.accent, fontSize: 16, fontWeight: '700' },
 
   // Risultato finale
   risultatoContainer: {
@@ -409,11 +341,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
-    backgroundColor: '#F9FAFB',
-    gap: 12,
+    backgroundColor: theme.colors.background,
+    gap: 16,
   },
-  risultatoEmoji: { fontSize: 64 },
-  risultatoTitolo: { fontSize: 24, fontWeight: '800', color: '#1A3A5C' },
-  risultatoPunteggio: { fontSize: 20, color: '#374151', fontWeight: '600' },
-  risultatoPercentuale: { fontSize: 48, fontWeight: '800', color: '#2E86AB' },
+  risultatoEmoji: { fontSize: 72 },
+  risultatoTitolo: { fontSize: 26, fontWeight: '800', color: theme.colors.text },
+  risultatoPunteggio: { fontSize: 18, color: theme.colors.textSecondary, fontWeight: '600' },
+  risultatoPercentuale: { fontSize: 56, fontWeight: '900', color: theme.colors.accent, marginBottom: 16 },
 });

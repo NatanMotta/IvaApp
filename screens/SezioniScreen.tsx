@@ -1,96 +1,79 @@
 // screens/SezioniScreen.tsx
 // Mostra la lista delle sezioni di un modulo.
 
-import { useEffect, useState } from 'react';
 import {
   View,
   Text,
   FlatList,
-  TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
 } from 'react-native';
-import { supabase } from '../lib/supabase';
-
-type Sezione = {
-  id: number;
-  titolo: string;
-  descrizione: string;
-  ordine: number;
-};
+import { useSezioni } from '../hooks/useSezioni';
+import { theme } from '../lib/theme';
+import { PremiumCard } from '../components/PremiumCard';
+import { Skeleton } from '../components/Skeleton';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function SezioniScreen({ route, navigation }: any) {
   // Recupera i parametri passati dalla HomeScreen
   const { moduloId, moduloTitolo } = route.params;
 
-  const [sezioni, setSezioni] = useState<Sezione[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: sezioni = [], isLoading, isError } = useSezioni(moduloId);
 
-  useEffect(() => {
-    caricaSezioni();
-  }, []);
-
-  async function caricaSezioni() {
-    const { data, error } = await supabase
-      .from('sezioni')
-      .select('*')
-      .eq('modulo_id', moduloId)
-      .eq('is_attivo', true)
-      .order('ordine');
-
-    if (error) {
-      console.error('Errore caricamento sezioni:', error.message);
-    } else {
-      setSezioni(data || []);
-    }
-
-    setLoading(false);
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient colors={['#1A3A5C', '#244d7a']} style={styles.headerBox}>
+          <Skeleton width="70%" height={26} borderRadius={8} style={{ marginBottom: 8, opacity: 0.5 }} />
+          <Skeleton width="50%" height={14} borderRadius={4} style={{ opacity: 0.4 }} />
+        </LinearGradient>
+        <View style={{ padding: 16, gap: 16 }}>
+           <Skeleton height={110} borderRadius={theme.borderRadius.lg} />
+           <Skeleton height={110} borderRadius={theme.borderRadius.lg} />
+           <Skeleton height={110} borderRadius={theme.borderRadius.lg} />
+        </View>
+      </View>
+    );
   }
 
-  if (loading) {
+  if (isError) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#2E86AB" />
+        <Text style={{ color: theme.colors.error }}>Errore nel caricamento delle sezioni.</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerBox}>
+      <LinearGradient colors={['#1A3A5C', '#244d7a']} style={styles.headerBox} start={{x: 0, y: 0}} end={{x: 1, y: 1}}>
         <Text style={styles.headerTitle}>{moduloTitolo}</Text>
-        <Text style={styles.headerSubtitle}>Scegli una sezione per iniziare la prossima sprint.</Text>
-      </View>
+        <Text style={styles.headerSubtitle}>Scegli una sezione per imparare e fare i quiz.</Text>
+      </LinearGradient>
 
       <FlatList
         data={sezioni}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.card}
+          <PremiumCard
+            title={item.titolo}
+            description={item.descrizione || 'Tocca per aprire appunti e sprint di quiz.'}
+            badge="Lezione"
+            badgeType="primary"
             onPress={() => navigation.navigate('DettaglioSezione', {
               sezioneId: item.id,
               sezioneTitolo: item.titolo,
               moduloId,
               isRipassoErrori: false,
             })}
-          >
-            <View style={styles.cardTopRow}>
-              <Text style={styles.cardTitolo}>{item.titolo}</Text>
-              <Text style={styles.cardBadge}>Lezione</Text>
-            </View>
-            <Text style={styles.cardDescrizione}>
-              {item.descrizione || 'Apri la sezione per contenuto, schema e quiz a sprint.'}
-            </Text>
-            <Text style={styles.cardArrow}>Apri sezione →</Text>
-          </TouchableOpacity>
+          />
         )}
         ListEmptyComponent={
           <View style={styles.emptyBox}>
             <Text style={styles.emptyText}>Nessuna sezione disponibile per questo modulo.</Text>
           </View>
         }
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, gap: 12 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, paddingTop: 16, gap: 16 }}
+        showsVerticalScrollIndicator={false}
       />
     </View>
   );
@@ -99,80 +82,42 @@ export default function SezioniScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F6FA',
+    backgroundColor: theme.colors.background,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: theme.colors.background,
   },
   headerBox: {
-    backgroundColor: '#1A3A5C',
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 18,
-    marginBottom: 12,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 24,
+    borderBottomLeftRadius: theme.borderRadius.xl,
+    borderBottomRightRadius: theme.borderRadius.xl,
+    ...theme.shadows.mild,
   },
   headerTitle: {
     color: '#FFFFFF',
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   headerSubtitle: {
     color: '#D2DFED',
-    fontSize: 14,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#D7E2EE',
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  cardTitolo: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1A3A5C',
-  },
-  cardBadge: {
-    backgroundColor: '#E7F4FA',
-    color: '#2E86AB',
-    fontSize: 12,
-    fontWeight: '700',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  cardDescrizione: {
-    fontSize: 14,
-    color: '#425466',
-    lineHeight: 20,
-    marginBottom: 10,
-  },
-  cardArrow: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#2E86AB',
+    fontSize: 15,
   },
   emptyBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
-    borderColor: '#D7E2EE',
-    padding: 16,
+    borderColor: theme.colors.border,
+    padding: 24,
+    alignItems: 'center',
   },
   emptyText: {
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     fontSize: 15,
   },

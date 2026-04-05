@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,47 +5,24 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { supabase } from '../lib/supabase';
-
-type Modulo = {
-  id: number;
-};
+import { useModuli } from '../hooks/useModuli';
+import { theme } from '../lib/theme';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function RipassoScreen({ navigation }: any) {
-  const [loading, setLoading] = useState(true);
-  const [moduloId, setModuloId] = useState<number | null>(null);
+  const { data: moduli = [], isLoading, isError } = useModuli();
 
-  useEffect(() => {
-    caricaPrimoModulo();
-  }, []);
-
-  async function caricaPrimoModulo() {
-    const { data, error } = await supabase
-      .from('moduli')
-      .select('id')
-      .eq('is_attivo', true)
-      .order('ordine', { ascending: true })
-      .limit(1)
-      .single<Modulo>();
-
-    if (error) {
-      console.error('Errore caricamento primo modulo:', error.message);
-      setModuloId(null);
-    } else {
-      setModuloId(data?.id ?? null);
-    }
-    setLoading(false);
-  }
-
-  if (loading) {
+  if (isLoading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#2E86AB" />
+        <ActivityIndicator size="large" color={theme.colors.accent} />
       </View>
     );
   }
 
-  if (!moduloId) {
+  const moduloId = moduli[0]?.id ?? null;
+
+  if (isError || !moduloId) {
     return (
       <View style={styles.centered}>
         <Text style={styles.emptyText}>
@@ -58,22 +34,24 @@ export default function RipassoScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.hero}>
-        <Text style={styles.heroTitle}>Ripasso Errori</Text>
+      <LinearGradient colors={[theme.colors.primary, theme.colors.primaryLight]} style={[styles.hero, theme.shadows.mild]} start={{x: 0, y: 0}} end={{x: 1, y: 1}}>
+        <Text style={styles.heroTitle}>Focus Errori</Text>
         <Text style={styles.heroSubtitle}>
-          Esegui sprint da 20 domande basate sui quiz che hai sbagliato.
+          Rivedi i quiz che hai sbagliato e consolida la tua preparazione.
         </Text>
-      </View>
+      </LinearGradient>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Modalita Sprint</Text>
+      <View style={[styles.card, theme.shadows.mild]}>
+        <Text style={styles.cardTitle}>Modalità Sprint</Text>
         <Text style={styles.cardText}>
-          Ogni risposta corretta rimuove automaticamente il quiz dalla lista errori.
+          Affronta uno sprint da max 20 domande casuali selezionate tra i tuoi errori recenti. 
+          Ogni risposta corretta rimuove automaticamente il quiz dalla lista rossa.
         </Text>
       </View>
 
       <TouchableOpacity
         style={styles.button}
+        activeOpacity={0.8}
         onPress={() =>
           navigation.push('QuizSessioneRipasso', {
             sezioneId: 'ripasso-errori',
@@ -92,65 +70,67 @@ export default function RipassoScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F6FA',
+    backgroundColor: theme.colors.background,
     padding: 16,
+    paddingTop: 24,
+    gap: 16,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#F3F6FA',
+    backgroundColor: theme.colors.background,
   },
   hero: {
-    backgroundColor: '#1A3A5C',
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 14,
+    padding: 24,
+    borderRadius: theme.borderRadius.xl,
   },
   heroTitle: {
     color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '800',
-    marginBottom: 6,
+    fontSize: 26,
+    fontWeight: '900',
+    marginBottom: 8,
   },
   heroSubtitle: {
-    color: '#D3E0EE',
-    fontSize: 14,
-    lineHeight: 20,
+    color: '#D2DFED',
+    fontSize: 15,
+    lineHeight: 22,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.borderRadius.lg,
+    padding: 20,
     borderWidth: 1,
-    borderColor: '#D7E2EE',
+    borderColor: theme.colors.border,
   },
   cardTitle: {
-    color: '#1A3A5C',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 6,
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 8,
   },
   cardText: {
-    color: '#425466',
-    fontSize: 14,
-    lineHeight: 20,
+    color: theme.colors.textSecondary,
+    fontSize: 15,
+    lineHeight: 22,
   },
   button: {
-    marginTop: 16,
-    backgroundColor: '#2E86AB',
-    borderRadius: 12,
-    padding: 16,
+    marginTop: 'auto',
+    marginBottom: 16,
+    backgroundColor: theme.colors.accent,
+    borderRadius: theme.borderRadius.md,
+    padding: 18,
     alignItems: 'center',
+    ...theme.shadows.mild,
   },
   buttonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '800',
   },
   emptyText: {
-    color: '#6B7280',
+    color: theme.colors.textSecondary,
     fontSize: 16,
     textAlign: 'center',
   },
