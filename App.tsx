@@ -18,6 +18,7 @@ import SezioniScreen from './screens/SezioniScreen';
 import DettaglioSezioneScreen from './screens/DettaglioSezioneScreen';
 import QuizSessioneScreen from './screens/QuizSessioneScreen';
 import RipassoScreen from './screens/RipassoScreen';
+import AllenamentoOggiScreen from './screens/AllenamentoOggiScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -66,6 +67,11 @@ function HomeStackNavigator() {
         name="QuizSessione"
         component={QuizSessioneScreen}
         options={({ route }: any) => ({ title: (route.params as any)?.sezioneTitolo })}
+      />
+      <Stack.Screen
+        name="AllenamentoOggi"
+        component={AllenamentoOggiScreen}
+        options={{ title: 'Allenamento di oggi' }}
       />
     </Stack.Navigator>
   );

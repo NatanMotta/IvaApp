@@ -8,13 +8,14 @@ import {
   Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useModuli, type Modulo } from '../hooks/useModuli';
+import { useSezioni } from '../hooks/useSezioni';
 import { theme } from '../lib/theme';
 import { Skeleton } from '../components/Skeleton';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { canAccessModulo } from '../lib/entitlements';
+import { useDailyTrainingProgress } from '../hooks/useDailyTrainingProgress';
 
 const LAST_MODULO_KEY = '@ivaapp_last_modulo_id';
 
@@ -22,6 +23,7 @@ export default function HomeScreen({ navigation }: any) {
   const { data: moduli = [], isLoading, isError } = useModuli();
   const { data: entitlements } = useEntitlements();
   const [lastModuloId, setLastModuloId] = useState<number | null>(null);
+  const { percentage, isLoading: progressLoading } = useDailyTrainingProgress();
 
   useEffect(() => {
     let mounted = true;
@@ -43,8 +45,8 @@ export default function HomeScreen({ navigation }: any) {
     return moduli.find((m) => m.id === lastModuloId) ?? moduli[0];
   }, [lastModuloId, moduli]);
 
-  const premiumCount = moduli.filter((m) => m.is_premium).length;
-  const freeCount = Math.max(moduli.length - premiumCount, 0);
+  const { data: sezioniModuloCorrente = [] } = useSezioni(moduloCorrente?.id ?? 0);
+  const sezioneDelGiorno = sezioniModuloCorrente[0] ?? null;
 
   async function openModulo(modulo: Modulo) {
     const hasAccess = canAccessModulo(modulo, !!entitlements?.hasPro);
@@ -68,29 +70,28 @@ export default function HomeScreen({ navigation }: any) {
     });
   }
 
-  if (isLoading) {
+  function openAllenamentoOggi() {
+    if (!moduloCorrente || !sezioneDelGiorno) {
+      Alert.alert('Contenuto non disponibile', 'Serve almeno una sezione attiva per avviare l’allenamento di oggi.');
+      return;
+    }
+
+    navigation.navigate('AllenamentoOggi', {
+      moduloId: moduloCorrente.id,
+      moduloTitolo: moduloCorrente.titolo,
+      sezioneId: sezioneDelGiorno.id,
+      sezioneTitolo: sezioneDelGiorno.titolo,
+    });
+  }
+
+  if (isLoading || progressLoading) {
     return (
       <View style={styles.container}>
-        <LinearGradient
-          colors={[theme.colors.primary, theme.colors.primaryLight]}
-          style={styles.hero}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Skeleton width="38%" height={16} borderRadius={6} style={{ opacity: 0.4, marginBottom: 12 }} />
-          <Skeleton width="70%" height={30} borderRadius={8} style={{ opacity: 0.55, marginBottom: 8 }} />
-          <Skeleton width="56%" height={18} borderRadius={6} style={{ opacity: 0.45, marginBottom: 18 }} />
-          <View style={styles.metricsRow}>
-            <Skeleton width="31%" height={78} borderRadius={12} style={{ opacity: 0.45 }} />
-            <Skeleton width="31%" height={78} borderRadius={12} style={{ opacity: 0.45 }} />
-            <Skeleton width="31%" height={78} borderRadius={12} style={{ opacity: 0.45 }} />
-          </View>
-        </LinearGradient>
-
-        <View style={styles.listContainer}>
-          <Skeleton height={108} borderRadius={theme.borderRadius.lg} style={{ marginBottom: 12 }} />
-          <Skeleton height={108} borderRadius={theme.borderRadius.lg} style={{ marginBottom: 12 }} />
-          <Skeleton height={108} borderRadius={theme.borderRadius.lg} />
+        <View style={styles.contentContainer}>
+          <Skeleton height={160} borderRadius={theme.borderRadius.xl} style={{ marginBottom: 14 }} />
+          <Skeleton height={130} borderRadius={theme.borderRadius.lg} style={{ marginBottom: 10 }} />
+          <Skeleton height={102} borderRadius={theme.borderRadius.lg} style={{ marginBottom: 10 }} />
+          <Skeleton height={102} borderRadius={theme.borderRadius.lg} />
         </View>
       </View>
     );
@@ -106,63 +107,70 @@ export default function HomeScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[theme.colors.primary, theme.colors.primaryLight]}
-        style={styles.hero}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        <Text style={styles.kicker}>Cockpit Studio</Text>
-        <Text style={styles.heroTitle}>Riprendi da dove eri rimasto</Text>
-        <Text style={styles.heroSubtitle}>
-          Entra in un modulo o avvia subito uno sprint quiz.
-        </Text>
-
-        <View style={styles.metricsRow}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{moduli.length}</Text>
-            <Text style={styles.metricLabel}>Moduli attivi</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{freeCount}</Text>
-            <Text style={styles.metricLabel}>Accesso free</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{premiumCount}</Text>
-            <Text style={styles.metricLabel}>Pro</Text>
-          </View>
-        </View>
-
-        <View style={styles.ctaRow}>
-          <TouchableOpacity
-            style={styles.ctaPrimary}
-            activeOpacity={0.86}
-            disabled={!moduloCorrente}
-            onPress={() => moduloCorrente && openModulo(moduloCorrente)}
-          >
-            <Ionicons name="play" size={15} color={theme.colors.primary} />
-            <Text style={styles.ctaPrimaryText}>Continua studio</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.ctaSecondary}
-            activeOpacity={0.86}
-            onPress={() => navigation.getParent()?.navigate('Quiz')}
-          >
-            <Ionicons name="flash-outline" size={15} color="#fff" />
-            <Text style={styles.ctaSecondaryText}>Sprint quiz</Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-
       <FlatList
         data={moduli}
         keyExtractor={(item) => item.id.toString()}
         ListHeaderComponent={
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>I tuoi moduli</Text>
-            <Text style={styles.sectionSubtitle}>Ordina il tuo studio partendo dalle sezioni essenziali.</Text>
-          </View>
+          <>
+            <View style={[styles.todayCard, theme.shadows.mild]}>
+              <View style={styles.todayTopRow}>
+                <Text style={styles.todayTitle}>Allenamento di oggi</Text>
+                <Text style={styles.todayPercent}>{percentage}%</Text>
+              </View>
+              <Text style={styles.todaySubtitle}>
+                Avvio rapido percorso guidato: podcast + quiz + ripasso.
+              </Text>
+
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${percentage}%` }]} />
+              </View>
+
+              <TouchableOpacity
+                style={styles.todayButton}
+                activeOpacity={0.85}
+                onPress={openAllenamentoOggi}
+              >
+                <Ionicons name="play" size={16} color="#fff" />
+                <Text style={styles.todayButtonText}>Avvia allenamento di oggi</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Allenati / Quiz</Text>
+              <Text style={styles.sectionSubtitle}>
+                Moduli sbloccati, schema riassuntivo, quiz, sbagliati e preferiti.
+              </Text>
+            </View>
+
+            <View style={styles.quickActionsRow}>
+              <TouchableOpacity
+                style={[styles.quickAction, theme.shadows.mild]}
+                onPress={() => (moduloCorrente ? openModulo(moduloCorrente) : null)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="book-outline" size={16} color={theme.colors.accent} />
+                <Text style={styles.quickActionText}>Schema</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.quickAction, theme.shadows.mild]}
+                onPress={() => navigation.getParent()?.navigate('Quiz')}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="help-circle-outline" size={16} color={theme.colors.accent} />
+                <Text style={styles.quickActionText}>Quiz</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.quickAction, theme.shadows.mild]}
+                onPress={() => navigation.getParent()?.navigate('Ripasso')}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="refresh-outline" size={16} color={theme.colors.accent} />
+                <Text style={styles.quickActionText}>Sbagliati</Text>
+              </TouchableOpacity>
+            </View>
+          </>
         }
         renderItem={({ item, index }) => {
           const highlight = moduloCorrente?.id === item.id;
@@ -176,21 +184,21 @@ export default function HomeScreen({ navigation }: any) {
                 <Text style={styles.moduleIndex}>{String(index + 1).padStart(2, '0')}</Text>
                 <View style={[styles.stateBadge, highlight ? styles.stateBadgeActive : styles.stateBadgeIdle]}>
                   <Text style={[styles.stateBadgeText, highlight && styles.stateBadgeTextActive]}>
-                    {highlight ? 'In corso' : 'Disponibile'}
+                    {highlight ? 'Attivo' : 'Sbloccato'}
                   </Text>
                 </View>
               </View>
 
               <Text style={styles.moduleTitle}>{item.titolo}</Text>
               <Text style={styles.moduleDescription} numberOfLines={2}>
-                {item.descrizione || 'Apri il modulo per vedere sezioni, schema e quiz.'}
+                {item.descrizione || 'Apri il modulo per schema e quiz.'}
               </Text>
 
               <View style={styles.moduleFooter}>
                 {item.is_premium ? (
-                  <Text style={styles.modulePremium}>Contenuto Pro</Text>
+                  <Text style={styles.modulePremium}>Pro</Text>
                 ) : (
-                  <Text style={styles.moduleFree}>Contenuto incluso</Text>
+                  <Text style={styles.moduleFree}>Free</Text>
                 )}
                 <View style={styles.moduleAction}>
                   <Text style={styles.moduleActionText}>Apri</Text>
@@ -200,7 +208,7 @@ export default function HomeScreen({ navigation }: any) {
             </TouchableOpacity>
           );
         }}
-        contentContainerStyle={styles.listContainer}
+        contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       />
     </View>
@@ -218,122 +226,99 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: theme.colors.background,
   },
-  hero: {
+  contentContainer: {
+    padding: 16,
+    paddingBottom: 40,
+    gap: 12,
+  },
+  todayCard: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.xl,
     padding: 18,
-    paddingTop: 22,
-    borderBottomLeftRadius: theme.borderRadius.xl,
-    borderBottomRightRadius: theme.borderRadius.xl,
-    ...theme.shadows.mild,
-  },
-  kicker: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    color: '#E5EEF8',
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 10,
-  },
-  heroTitle: {
-    color: '#fff',
-    fontSize: 26,
-    fontWeight: '900',
-    marginBottom: 6,
-  },
-  heroSubtitle: {
-    color: '#D2DFED',
-    fontSize: 14,
-    lineHeight: 20,
     marginBottom: 14,
   },
-  metricsRow: {
+  todayTopRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
   },
-  metricCard: {
-    flex: 1,
-    borderRadius: theme.borderRadius.md,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-  },
-  metricValue: {
+  todayTitle: {
     color: '#fff',
+    fontSize: 24,
+    fontWeight: '900',
+  },
+  todayPercent: {
+    color: '#8CE3B8',
     fontSize: 20,
     fontWeight: '900',
-    textAlign: 'center',
   },
-  metricLabel: {
-    color: '#D2DFED',
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginTop: 3,
+  todaySubtitle: {
+    color: '#D7E4F1',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
   },
-  ctaRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  ctaPrimary: {
-    flex: 1,
+  progressTrack: {
+    width: '100%',
+    height: 9,
     borderRadius: theme.borderRadius.full,
-    backgroundColor: '#F8FBFF',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    overflow: 'hidden',
+    marginBottom: 14,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: '#4EC38A',
+  },
+  todayButton: {
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.accent,
     paddingVertical: 12,
-    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
   },
-  ctaPrimaryText: {
-    color: theme.colors.primary,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  ctaSecondary: {
-    flex: 1,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  ctaSecondaryText: {
+  todayButtonText: {
     color: '#fff',
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '900',
   },
   sectionHeader: {
-    marginBottom: 10,
-    marginTop: 6,
+    marginBottom: 4,
   },
   sectionTitle: {
-    fontSize: 19,
+    fontSize: 20,
     fontWeight: '900',
     color: theme.colors.text,
-    marginBottom: 2,
+    marginBottom: 3,
   },
   sectionSubtitle: {
     color: theme.colors.textSecondary,
     fontSize: 13,
     lineHeight: 18,
   },
-  listContainer: {
-    padding: 16,
-    paddingBottom: 40,
-    gap: 12,
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+  quickAction: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingVertical: 10,
+    alignItems: 'center',
+    gap: 5,
+  },
+  quickActionText: {
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: '800',
   },
   moduleCard: {
     backgroundColor: '#fff',
