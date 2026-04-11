@@ -48,6 +48,8 @@ Script utili:
 - `screens/DettaglioSezioneScreen.tsx`: contenuti didattici sezione
 - `screens/QuizSessioneScreen.tsx`: quiz interattivo e salvataggio risposte
 - `screens/ProfiloScreen.tsx`: logout
+- `hooks/useEntitlements.ts`: stato piano utente (`free/pro`) e accesso Pro
+- `supabase/sql/entitlements_setup.sql`: setup SQL per entitlements + RLS premium
 
 ## Tabelle Supabase attese
 
@@ -59,4 +61,44 @@ L’app usa queste tabelle:
 - `risposte_utente`
 - `quiz_da_correggere`
 
+Per gestione premium, aggiungi a `profiles`:
+- `subscription_tier` (`free|pro`)
+- `subscription_status` (`inactive|trialing|active|past_due|canceled`)
+- `subscription_current_period_end` (`timestamptz`, opzionale)
+- `subscription_customer_id` (`text`, opzionale)
+- `stripe_subscription_id` (`text`, opzionale)
+
 Assicurati che policy RLS e permessi siano coerenti con i flussi di lettura/scrittura dell’utente autenticato.
+
+## Setup Entitlements + Stripe Webhook
+
+1. Esegui SQL su Supabase:
+   - Apri **Supabase Dashboard > SQL Editor**
+   - Copia/incolla il contenuto di:
+     - `supabase/sql/entitlements_setup.sql`
+   - Esegui la query.
+
+2. Deploy funzione webhook Stripe:
+   - File funzione:
+     - `supabase/functions/stripe-webhook/index.ts`
+   - Richiede Supabase CLI installata e progetto linkato.
+   - Comandi:
+
+```bash
+supabase functions deploy stripe-webhook
+supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_xxx
+```
+
+3. Configura endpoint in Stripe:
+   - URL:
+     - `https://<PROJECT_REF>.functions.supabase.co/stripe-webhook`
+   - Eventi da inviare:
+     - `checkout.session.completed`
+     - `customer.subscription.created`
+     - `customer.subscription.updated`
+     - `customer.subscription.deleted`
+     - `invoice.payment_failed`
+
+4. Associa checkout a utente app:
+   - Quando crei una Checkout Session Stripe, passa `client_reference_id = user.id` (uuid Supabase).
+   - In questo modo il webhook aggiorna `profiles` in modo diretto.

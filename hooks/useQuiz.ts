@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 
 export type Quiz = {
   id: number;
+  sezione_id: number;
   domanda: string;
   opzione_a: string;
   opzione_b: string;
@@ -13,9 +14,15 @@ export type Quiz = {
 
 const QUIZ_PER_SPRINT = 20;
 
-export function useQuizSessione(sezioneId: number, isRipassoErrori: boolean, moduloId?: number) {
+export function useQuizSessione(params: {
+  sezioneId: number;
+  isRipassoErrori: boolean;
+  moduloId?: number;
+  quizPerSprint?: number;
+}) {
+  const { sezioneId, isRipassoErrori, moduloId, quizPerSprint = QUIZ_PER_SPRINT } = params;
   return useQuery({
-    queryKey: ['quiz_sessione', sezioneId, isRipassoErrori, moduloId],
+    queryKey: ['quiz_sessione', sezioneId, isRipassoErrori, moduloId, quizPerSprint],
     queryFn: async () => {
       if (isRipassoErrori) {
         const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -24,17 +31,6 @@ export function useQuizSessione(sezioneId: number, isRipassoErrori: boolean, mod
         }
 
         const userId = authData.user.id;
-
-        const { data: sezioniModulo, error: sezioniError } = await supabase
-          .from('sezioni')
-          .select('id')
-          .eq('modulo_id', moduloId)
-          .eq('is_attivo', true);
-
-        if (sezioniError) throw new Error(sezioniError.message);
-
-        const idsSezioni = (sezioniModulo || []).map((s: { id: number }) => s.id);
-        if (idsSezioni.length === 0) return [];
 
         const { data: erroriData, error: erroriQueryError } = await supabase
           .from('quiz_da_correggere')
@@ -46,18 +42,36 @@ export function useQuizSessione(sezioneId: number, isRipassoErrori: boolean, mod
         const idsQuizDaCorreggere = (erroriData || []).map((q: { quiz_id: number }) => q.quiz_id);
         if (idsQuizDaCorreggere.length === 0) return [];
 
-        const { data: quizData, error: quizError } = await supabase
+        let quizQuery = supabase
           .from('quiz')
           .select('*')
           .in('id', idsQuizDaCorreggere)
-          .in('sezione_id', idsSezioni)
           .eq('is_attivo', true);
 
+        // Se è stato richiesto uno specifico topic/sezione, lo rispettiamo sempre.
+        if (sezioneId) {
+          quizQuery = quizQuery.eq('sezione_id', sezioneId);
+        } else if (moduloId) {
+          const { data: sezioniModulo, error: sezioniError } = await supabase
+            .from('sezioni')
+            .select('id')
+            .eq('modulo_id', moduloId)
+            .eq('is_attivo', true);
+
+          if (sezioniError) throw new Error(sezioniError.message);
+
+          const idsSezioni = (sezioniModulo || []).map((s: { id: number }) => s.id);
+          if (idsSezioni.length === 0) return [];
+
+          quizQuery = quizQuery.in('sezione_id', idsSezioni);
+        }
+
+        const { data: quizData, error: quizError } = await quizQuery;
         if (quizError) throw new Error(quizError.message);
 
         return (quizData || [])
           .sort(() => Math.random() - 0.5)
-          .slice(0, QUIZ_PER_SPRINT) as Quiz[];
+          .slice(0, quizPerSprint) as Quiz[];
       } else {
         const { data, error } = await supabase
           .from('quiz')
@@ -71,11 +85,48 @@ export function useQuizSessione(sezioneId: number, isRipassoErrori: boolean, mod
 
         return (data || [])
           .sort(() => Math.random() - 0.5)
-          .slice(0, QUIZ_PER_SPRINT) as Quiz[];
+          .slice(0, quizPerSprint) as Quiz[];
       }
     },
-    enabled: isRipassoErrori ? !!moduloId : !!sezioneId,
+    enabled: isRipassoErrori ? (!!moduloId || !!sezioneId) : !!sezioneId,
     staleTime: 0, // Vogliamo sempre randomizzare
     gcTime: 0, // Non tenere in cache così quando rientra avrà un set nuovo, oppure no? Mettiamo staleTime 0 ma gcTime standard
+  });
+}
+
+export function useQuizSessioneModulo(params: { moduloId: number; quizPerSprint?: number }) {
+  const { moduloId, quizPerSprint = QUIZ_PER_SPRINT } = params;
+
+  return useQuery({
+    queryKey: ['quiz_sessione_modulo', moduloId, quizPerSprint],
+    queryFn: async () => {
+      if (!moduloId) return [];
+
+      const { data: sezioniModulo, error: sezioniError } = await supabase
+        .from('sezioni')
+        .select('id')
+        .eq('modulo_id', moduloId)
+        .eq('is_attivo', true);
+
+      if (sezioniError) throw new Error(sezioniError.message);
+
+      const idsSezioni = (sezioniModulo || []).map((s: { id: number }) => s.id);
+      if (idsSezioni.length === 0) return [];
+
+      const { data: quizData, error: quizError } = await supabase
+        .from('quiz')
+        .select('*')
+        .in('sezione_id', idsSezioni)
+        .eq('is_attivo', true);
+
+      if (quizError) throw new Error(quizError.message);
+
+      return (quizData || [])
+        .sort(() => Math.random() - 0.5)
+        .slice(0, quizPerSprint) as Quiz[];
+    },
+    enabled: !!moduloId,
+    staleTime: 0,
+    gcTime: 0,
   });
 }

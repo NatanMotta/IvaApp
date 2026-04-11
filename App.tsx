@@ -94,6 +94,29 @@ function RipassoStackNavigator() {
   );
 }
 
+function QuizStackNavigator() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: theme.colors.primary, shadowOpacity: 0, elevation: 0 },
+        headerTintColor: '#fff',
+        headerTitleStyle: { fontWeight: '800' },
+      }}
+    >
+      <Stack.Screen
+        name="QuizMain"
+        component={QuizScreen}
+        options={{ title: 'Quiz' }}
+      />
+      <Stack.Screen
+        name="QuizSessione"
+        component={QuizSessioneScreen}
+        options={({ route }: any) => ({ title: (route.params as any)?.sezioneTitolo ?? 'Quiz' })}
+      />
+    </Stack.Navigator>
+  );
+}
+
 function MainApp() {
   // null = stiamo ancora controllando, Session = loggato, false = non loggato
   const [session, setSession] = useState<Session | null | false>(null);
@@ -166,7 +189,11 @@ function MainApp() {
           options={{ headerShown: false }}
           component={HomeStackNavigator}
         />
-        <Tab.Screen name="Quiz"      component={QuizScreen} />
+        <Tab.Screen
+          name="Quiz"
+          options={{ headerShown: false, title: 'Quiz' }}
+          component={QuizStackNavigator}
+        />
         <Tab.Screen name="Chatbot"   component={ChatbotScreen} options={{ title: 'Assistente IVA' }} />
         <Tab.Screen
           name="Ripasso"

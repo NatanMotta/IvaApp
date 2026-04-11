@@ -2,7 +2,7 @@
 // Schermata di sessione quiz — mostra un quiz alla volta.
 // L'utente risponde, vede il feedback immediato, poi passa al successivo.
 
-import { useState, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,19 +13,50 @@ import {
   Alert,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { useQuizSessione } from '../hooks/useQuiz';
+import { useQuizSessione, useQuizSessioneModulo } from '../hooks/useQuiz';
 import * as Haptics from 'expo-haptics';
 import { theme } from '../lib/theme';
+import { useEntitlements } from '../hooks/useEntitlements';
+import { useModuli } from '../hooks/useModuli';
+import { canAccessModulo } from '../lib/entitlements';
 
 export default function QuizSessioneScreen({ route, navigation }: any) {
-  const { sezioneId, sezioneTitolo, moduloId, isRipassoErrori } = route.params;
-  const scrollViewRef = useRef<ScrollView>(null);
-
-  const { data: quiz = [], isLoading, isError, refetch } = useQuizSessione(
-    isRipassoErrori ? 0 : sezioneId,
+  const {
+    sezioneId,
+    sezioneTitolo,
+    moduloId,
     isRipassoErrori,
-    moduloId
-  );
+    quizPerSprint = 20,
+    quizScope,
+  } = route.params;
+  const scrollViewRef = useRef<ScrollView>(null);
+  const { data: entitlements } = useEntitlements();
+  const { data: moduli = [], isLoading: moduliLoading } = useModuli();
+  const modulo = moduli.find((m) => m.id === moduloId) ?? null;
+  const moduloLocked = !isRipassoErrori && modulo ? !canAccessModulo(modulo, !!entitlements?.hasPro) : false;
+
+  const moduloQuery = useQuizSessioneModulo({
+    moduloId: quizScope === 'modulo' ? (moduloId ?? 0) : 0,
+    quizPerSprint,
+  });
+
+  const sezioneQuery = useQuizSessione({
+    sezioneId: isRipassoErrori ? 0 : sezioneId,
+    isRipassoErrori,
+    moduloId,
+    quizPerSprint,
+  });
+
+  const { data: quiz = [], isLoading, isError, refetch } =
+    quizScope === 'modulo' && !isRipassoErrori ? moduloQuery : sezioneQuery;
+
+  const quizScoped = useMemo(() => {
+    // Guard rail lato UI: in modalità sezione mostra solo quiz della sezione corrente.
+    if (!isRipassoErrori && quizScope !== 'modulo' && sezioneId) {
+      return quiz.filter((q) => q.sezione_id === sezioneId);
+    }
+    return quiz;
+  }, [isRipassoErrori, quiz, quizScope, sezioneId]);
 
   const [indiceAttuale, setIndiceAttuale] = useState(0);
   const [rispostaScelta, setRispostaScelta] = useState<string | null>(null);
@@ -37,7 +68,7 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
 
     setRispostaScelta(opzione);
 
-    const quizAttuale = quiz[indiceAttuale];
+    const quizAttuale = quizScoped[indiceAttuale];
     const isCorretta = opzione === quizAttuale.risposta_corretta;
 
     if (isCorretta) {
@@ -104,7 +135,7 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
 
   function handleAvanti() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (indiceAttuale + 1 >= quiz.length) {
+    if (indiceAttuale + 1 >= quizScoped.length) {
       setSessioneFinita(true);
     } else {
       setIndiceAttuale(i => i + 1);
@@ -113,10 +144,26 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
   }
 
   // ── LOADING ────────────────────────────────────────────────
-  if (isLoading) {
+  if (isLoading || moduliLoading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={theme.colors.accent} />
+      </View>
+    );
+  }
+
+  if (moduloLocked) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.testoVuoto}>
+          Questo sprint è disponibile solo con piano Pro.
+        </Text>
+        <TouchableOpacity
+          style={[styles.bottone, { marginTop: 16 }]}
+          onPress={() => navigation.getParent()?.navigate('Profilo')}
+        >
+          <Text style={styles.bottoneText}>Gestisci abbonamento</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -130,7 +177,7 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
   }
 
   // ── NESSUN QUIZ ────────────────────────────────────────────
-  if (quiz.length === 0) {
+  if (quizScoped.length === 0) {
     return (
       <View style={styles.centered}>
         <Text style={styles.testoVuoto}>
@@ -144,7 +191,7 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
 
   // ── SESSIONE FINITA ────────────────────────────────────────
   if (sessioneFinita) {
-    const percentuale = Math.round((punteggio / quiz.length) * 100);
+    const percentuale = Math.round((punteggio / quizScoped.length) * 100);
     return (
       <View style={styles.risultatoContainer}>
         <Text style={styles.risultatoEmoji}>
@@ -152,7 +199,7 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
         </Text>
         <Text style={styles.risultatoTitolo}>Sessione completata!</Text>
         <Text style={styles.risultatoPunteggio}>
-          {punteggio} / {quiz.length} corrette
+          {punteggio} / {quizScoped.length} corrette
         </Text>
         <Text style={styles.risultatoPercentuale}>{percentuale}%</Text>
 
@@ -186,7 +233,7 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
   }
 
   // ── QUIZ ATTIVO ────────────────────────────────────────────
-  const quizAttuale = quiz[indiceAttuale];
+  const quizAttuale = quizScoped[indiceAttuale];
   const opzioni = [
     { key: 'a', testo: quizAttuale.opzione_a },
     { key: 'b', testo: quizAttuale.opzione_b },
@@ -203,13 +250,13 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
       {/* Progresso */}
       <View style={styles.progressoContainer}>
         <Text style={styles.progressoTesto}>
-          {indiceAttuale + 1} / {quiz.length}
+          {indiceAttuale + 1} / {quizScoped.length}
         </Text>
         <View style={styles.progressoBar}>
           <View
             style={[
               styles.progressoFill,
-              { width: `${((indiceAttuale + 1) / quiz.length) * 100}%` },
+              { width: `${((indiceAttuale + 1) / quizScoped.length) * 100}%` },
             ]}
           />
         </View>
@@ -262,7 +309,7 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
 
           <TouchableOpacity style={styles.bottone} onPress={handleAvanti} activeOpacity={0.8}>
             <Text style={styles.bottoneText}>
-              {indiceAttuale + 1 >= quiz.length ? 'Vedi risultato' : 'Prossima domanda →'}
+              {indiceAttuale + 1 >= quizScoped.length ? 'Vedi risultato' : 'Prossima domanda →'}
             </Text>
           </TouchableOpacity>
         </View>
