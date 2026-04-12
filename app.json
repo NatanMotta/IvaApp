@@ -11,9 +11,13 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "jsEngine": "jsc",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.natan1998.IvaApp"
+      "bundleIdentifier": "com.natan1998.IvaApp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -31,6 +35,9 @@
       "eas": {
         "projectId": "ca8c1b43-0048-41da-9762-75a278daa14f"
       }
-    }
+    },
+    "plugins": [
+      "expo-audio"
+    ]
   }
 }

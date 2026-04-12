@@ -182,7 +182,7 @@ export default function DettaglioSezioneScreen({ route, navigation }: any) {
   const [quizPerSprint, setQuizPerSprint] = useState<10 | 20>(10);
   const [immersionIndex, setImmersionIndex] = useState(0);
   const immersionAnim = useRef(new Animated.Value(1)).current;
-  const soundRef = useRef<any | null>(null);
+  const audioRef = useRef<{ player: any; subscription?: any } | null>(null);
   const [audioLoaded, setAudioLoaded] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [audioPositionMs, setAudioPositionMs] = useState(0);
@@ -282,29 +282,24 @@ export default function DettaglioSezioneScreen({ route, navigation }: any) {
     async function setupAudio() {
       if (!inDailyImmersion || !resolvedAudioUrl) return;
 
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
+      if (audioRef.current) {
+        audioRef.current.subscription?.remove?.();
+        audioRef.current.player?.pause?.();
+        audioRef.current.player?.remove?.();
+        audioRef.current = null;
       }
 
-      const expoAv = await import('expo-av');
-      const Audio = expoAv.Audio;
-
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: resolvedAudioUrl },
-        { shouldPlay: false },
-        (status: any) => {
-          if (!status?.isLoaded) return;
-          setAudioLoaded(true);
-          setAudioPlaying(!!status.isPlaying);
-          setAudioPositionMs(status.positionMillis ?? 0);
-          setAudioDurationMs(status.durationMillis ?? 0);
-        }
-      );
-
+      const expoAudio = await import('expo-audio');
+      const player = expoAudio.createAudioPlayer({ uri: resolvedAudioUrl }, { updateInterval: 250 });
+      const subscription = player.addListener?.('playbackStatusUpdate', (status: any) => {
+        setAudioLoaded(true);
+        setAudioPlaying(!!status?.playing);
+        setAudioPositionMs(Math.round((status?.currentTime ?? 0) * 1000));
+        setAudioDurationMs(Math.round((status?.duration ?? 0) * 1000));
+      });
       setAudioModuleReady(true);
-      setAudioDebug((prev) => prev ?? 'Audio module ready');
-      soundRef.current = sound;
+      setAudioDebug((prev) => prev ?? 'Audio ready');
+      audioRef.current = { player, subscription };
     }
 
     setupAudio().catch(() => {
@@ -313,13 +308,15 @@ export default function DettaglioSezioneScreen({ route, navigation }: any) {
       setAudioPlaying(false);
       setAudioPositionMs(0);
       setAudioDurationMs(0);
-      setAudioDebug('expo-av non disponibile in questa build');
+      setAudioDebug('expo-audio non disponibile in questa build');
     });
 
     return () => {
-      if (soundRef.current) {
-        soundRef.current.unloadAsync().catch(() => null);
-        soundRef.current = null;
+      if (audioRef.current) {
+        audioRef.current.subscription?.remove?.();
+        audioRef.current.player?.pause?.();
+        audioRef.current.player?.remove?.();
+        audioRef.current = null;
       }
       setAudioLoaded(false);
       setAudioPlaying(false);
@@ -449,20 +446,22 @@ export default function DettaglioSezioneScreen({ route, navigation }: any) {
     const canSyncAudio = audioLoaded && effectiveCuePoints.length === immersionTotal;
 
     async function toggleAudio() {
-      if (!soundRef.current || !audioLoaded) return;
+      const player = audioRef.current?.player;
+      if (!player || !audioLoaded) return;
       if (audioPlaying) {
-        await soundRef.current.pauseAsync();
+        player.pause();
       } else {
-        await soundRef.current.playAsync();
+        player.play();
       }
     }
 
     async function goToIndex(nextIndex: number) {
       const clamped = Math.max(0, Math.min(immersionTotal - 1, nextIndex));
       setImmersionIndex(clamped);
-      if (!soundRef.current || !canSyncAudio) return;
+      const player = audioRef.current?.player;
+      if (!player || !canSyncAudio) return;
       const seconds = effectiveCuePoints[clamped] ?? 0;
-      await soundRef.current.setPositionAsync(Math.round(seconds * 1000));
+      await player.seekTo(seconds);
     }
 
     return (
@@ -541,8 +540,8 @@ export default function DettaglioSezioneScreen({ route, navigation }: any) {
               style={styles.immersionTapHalf}
               onPress={async () => {
                 if (isLast) {
-                  if (soundRef.current) {
-                    await soundRef.current.pauseAsync().catch(() => null);
+                  if (audioRef.current?.player) {
+                    audioRef.current.player.pause?.();
                   }
                   await markSectionCompleted(moduloId, sezioneId);
                   navigation.navigate('AllenamentoOggi');

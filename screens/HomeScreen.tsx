@@ -226,7 +226,7 @@ export default function HomeScreen({ navigation }: any) {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Allenati / Quiz</Text>
               <Text style={styles.sectionSubtitle}>
-                Moduli premium con schema e quiz: roadmap progressiva stile Duolingo.
+                Moduli premium con schema e quiz: roadmap progressiva.
               </Text>
             </View>
 

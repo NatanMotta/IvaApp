@@ -166,11 +166,11 @@ function MainApp() {
         screenOptions={({ route }) => ({
           tabBarIcon: ({ color, size, focused }) => {
             const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
-              Home:      focused ? 'home' : 'home-outline',
-              Quiz:      focused ? 'checkbox' : 'checkbox-outline',
-              Chatbot:   focused ? 'chatbubble-ellipses' : 'chatbubble-ellipses-outline',
-              Ripasso:   focused ? 'refresh-circle' : 'refresh-circle-outline',
-              Profilo:   focused ? 'person' : 'person-outline',
+              Home: focused ? 'home' : 'home-outline',
+              Quiz: focused ? 'checkbox' : 'checkbox-outline',
+              Chatbot: focused ? 'chatbubble-ellipses' : 'chatbubble-ellipses-outline',
+              Ripasso: focused ? 'refresh-circle' : 'refresh-circle-outline',
+              Profilo: focused ? 'person' : 'person-outline',
             };
             // Ingrandiamo leggermente l'icona selezionata
             return <Ionicons name={icons[route.name]} size={focused ? size + 2 : size} color={color} />;
@@ -200,13 +200,13 @@ function MainApp() {
           options={{ headerShown: false, title: 'Quiz' }}
           component={QuizStackNavigator}
         />
-        <Tab.Screen name="Chatbot"   component={ChatbotScreen} options={{ title: 'Assistente IVA' }} />
+        <Tab.Screen name="Chatbot" component={ChatbotScreen} options={{ title: 'Assistente IVA' }} />
         <Tab.Screen
           name="Ripasso"
           options={{ headerShown: false, title: 'Ripasso Errori' }}
           component={RipassoStackNavigator}
         />
-        <Tab.Screen name="Profilo"   component={ProfiloScreen} options={{ title: 'Il mio profilo' }} />
+        <Tab.Screen name="Profilo" component={ProfiloScreen} options={{ title: 'Il mio profilo' }} />
       </Tab.Navigator>
     </NavigationContainer>
   );
