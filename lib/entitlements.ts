@@ -9,6 +9,5 @@ export function hasProAccess(input: { tier: SubscriptionTier; status: Subscripti
 
 export function canAccessModulo(modulo: Modulo | null | undefined, hasPro: boolean): boolean {
   if (!modulo) return false;
-  if (!modulo.is_premium) return true;
   return hasPro;
 }

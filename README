@@ -44,15 +44,16 @@ Script utili:
 - `lib/supabase.ts`: client Supabase
 - `screens/AuthScreen.tsx`: login/registrazione
 - `screens/HomeScreen.tsx`: elenco moduli
-- `screens/AllenamentoOggiScreen.tsx`: roadmap giornaliera (podcast + quiz + ripasso)
+- `screens/AllenamentoOggiScreen.tsx`: roadmap giornaliera a moduli/sezioni con sblocco progressivo
 - `screens/SezioniScreen.tsx`: elenco sezioni per modulo
 - `screens/DettaglioSezioneScreen.tsx`: contenuti didattici sezione
 - `screens/QuizSessioneScreen.tsx`: quiz interattivo e salvataggio risposte
 - `screens/ProfiloScreen.tsx`: logout
 - `hooks/useEntitlements.ts`: stato piano utente (`free/pro`) e accesso Pro
-- `hooks/useDailyTrainingProgress.ts`: progresso giornaliero locale (fallback in-app)
+- `hooks/useRoadmapProgress.ts`: stato locale roadmap (sezioni completate/sbloccate)
 - `supabase/sql/entitlements_setup.sql`: setup SQL per entitlements + RLS premium
 - `supabase/sql/daily_training_progress_setup.sql`: tabella e policy per progresso giornaliero su Supabase
+- `supabase/sql/sezioni_audio_setup.sql`: colonne audio per full-immersion (URL + cue points)
 
 ## Tabelle Supabase attese
 
@@ -81,6 +82,7 @@ Assicurati che policy RLS e permessi siano coerenti con i flussi di lettura/scri
    - Copia/incolla il contenuto di:
      - `supabase/sql/entitlements_setup.sql`
      - `supabase/sql/daily_training_progress_setup.sql`
+     - `supabase/sql/sezioni_audio_setup.sql`
    - Esegui la query.
 
 2. Deploy funzione webhook Stripe:

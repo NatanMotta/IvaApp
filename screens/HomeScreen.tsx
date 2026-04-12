@@ -8,22 +8,30 @@ import {
   Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useModuli, type Modulo } from '../hooks/useModuli';
-import { useSezioni } from '../hooks/useSezioni';
 import { theme } from '../lib/theme';
 import { Skeleton } from '../components/Skeleton';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { canAccessModulo } from '../lib/entitlements';
-import { useDailyTrainingProgress } from '../hooks/useDailyTrainingProgress';
+import { useRoadmapProgress } from '../hooks/useRoadmapProgress';
+import { supabase } from '../lib/supabase';
 
 const LAST_MODULO_KEY = '@ivaapp_last_modulo_id';
+
+type RoadmapSezione = {
+  id: number;
+  modulo_id: number;
+  titolo: string;
+  ordine: number;
+};
 
 export default function HomeScreen({ navigation }: any) {
   const { data: moduli = [], isLoading, isError } = useModuli();
   const { data: entitlements } = useEntitlements();
   const [lastModuloId, setLastModuloId] = useState<number | null>(null);
-  const { percentage, isLoading: progressLoading } = useDailyTrainingProgress();
+  const { completedByModulo, isLoading: progressLoading } = useRoadmapProgress();
 
   useEffect(() => {
     let mounted = true;
@@ -45,15 +53,72 @@ export default function HomeScreen({ navigation }: any) {
     return moduli.find((m) => m.id === lastModuloId) ?? moduli[0];
   }, [lastModuloId, moduli]);
 
-  const { data: sezioniModuloCorrente = [] } = useSezioni(moduloCorrente?.id ?? 0);
-  const sezioneDelGiorno = sezioniModuloCorrente[0] ?? null;
+  const roadmapModuli = useMemo(() => moduli.slice(0, 2), [moduli]);
+  const roadmapModuloIds = useMemo(() => roadmapModuli.map((m) => m.id), [roadmapModuli]);
+
+  const { data: roadmapSezioni = [], isLoading: roadmapLoading } = useQuery({
+    queryKey: ['home_roadmap_sezioni', roadmapModuloIds],
+    queryFn: async () => {
+      if (roadmapModuloIds.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from('sezioni')
+        .select('id, modulo_id, titolo, ordine')
+        .in('modulo_id', roadmapModuloIds)
+        .eq('is_attivo', true)
+        .order('modulo_id', { ascending: true })
+        .order('ordine', { ascending: true });
+
+      if (error) throw new Error(error.message);
+      return (data || []) as RoadmapSezione[];
+    },
+    enabled: roadmapModuloIds.length > 0,
+  });
+
+  const roadmapPercentage = useMemo(() => {
+    const total = roadmapSezioni.length;
+    if (total === 0) return 0;
+
+    let completed = 0;
+    for (const moduloId of roadmapModuloIds) {
+      completed += (completedByModulo[String(moduloId)] || []).length;
+    }
+
+    return Math.round((Math.min(completed, total) / total) * 100);
+  }, [completedByModulo, roadmapModuloIds, roadmapSezioni.length]);
+
+  const primaSezioneSbloccata = useMemo(() => {
+    if (roadmapModuli.length === 0 || roadmapSezioni.length === 0) return null;
+
+    const byModulo: Record<number, RoadmapSezione[]> = {};
+    for (const sezione of roadmapSezioni) {
+      if (!byModulo[sezione.modulo_id]) byModulo[sezione.modulo_id] = [];
+      byModulo[sezione.modulo_id].push(sezione);
+    }
+
+    for (const modulo of roadmapModuli) {
+      const sezioniModulo = byModulo[modulo.id] || [];
+      const completedIds = completedByModulo[String(modulo.id)] || [];
+      const unlocked = sezioniModulo.find((s) => !completedIds.includes(s.id));
+      if (unlocked) return { moduloId: modulo.id, sezione: unlocked };
+    }
+
+    const primoModulo = roadmapModuli[0];
+    const primaSezione = byModulo[primoModulo.id]?.[0];
+    if (!primaSezione) return null;
+
+    return {
+      moduloId: primoModulo.id,
+      sezione: primaSezione,
+    };
+  }, [completedByModulo, roadmapModuli, roadmapSezioni]);
 
   async function openModulo(modulo: Modulo) {
     const hasAccess = canAccessModulo(modulo, !!entitlements?.hasPro);
     if (!hasAccess) {
       Alert.alert(
-        'Contenuto Premium',
-        'Questo modulo è disponibile con piano Pro. Puoi gestire l’abbonamento dal Profilo.',
+        'Solo piano Pro',
+        'Tutto il percorso è disponibile solo con abbonamento premium.',
         [
           { text: 'Annulla', style: 'cancel' },
           { text: 'Apri profilo', onPress: () => navigation.getParent()?.navigate('Profilo') },
@@ -70,21 +135,27 @@ export default function HomeScreen({ navigation }: any) {
     });
   }
 
-  function openAllenamentoOggi() {
-    if (!moduloCorrente || !sezioneDelGiorno) {
-      Alert.alert('Contenuto non disponibile', 'Serve almeno una sezione attiva per avviare l’allenamento di oggi.');
+  function openLezioneDiOggi() {
+    if (!entitlements?.hasPro) {
+      Alert.alert('Solo piano Pro', 'Per iniziare l’allenamento serve abbonamento premium.');
       return;
     }
 
-    navigation.navigate('AllenamentoOggi', {
-      moduloId: moduloCorrente.id,
-      moduloTitolo: moduloCorrente.titolo,
-      sezioneId: sezioneDelGiorno.id,
-      sezioneTitolo: sezioneDelGiorno.titolo,
+    if (!primaSezioneSbloccata) {
+      Alert.alert('Nessuna sezione disponibile', 'La roadmap non ha ancora sezioni attive.');
+      return;
+    }
+
+    navigation.navigate('DettaglioSezione', {
+      sezioneId: primaSezioneSbloccata.sezione.id,
+      sezioneTitolo: primaSezioneSbloccata.sezione.titolo,
+      moduloId: primaSezioneSbloccata.moduloId,
+      isRipassoErrori: false,
+      isDailyImmersion: true,
     });
   }
 
-  if (isLoading || progressLoading) {
+  if (isLoading || progressLoading || roadmapLoading) {
     return (
       <View style={styles.container}>
         <View style={styles.contentContainer}>
@@ -115,41 +186,58 @@ export default function HomeScreen({ navigation }: any) {
             <View style={[styles.todayCard, theme.shadows.mild]}>
               <View style={styles.todayTopRow}>
                 <Text style={styles.todayTitle}>Allenamento di oggi</Text>
-                <Text style={styles.todayPercent}>{percentage}%</Text>
+                <Text style={styles.todayPercent}>{roadmapPercentage}%</Text>
               </View>
               <Text style={styles.todaySubtitle}>
-                Avvio rapido percorso guidato: podcast + quiz + ripasso.
+                Roadmap in ordine su 2 moduli: una sezione alla volta, le successive restano bloccate.
+              </Text>
+              <Text style={styles.todayCurrentSection}>
+                Sezione corrente: {primaSezioneSbloccata?.sezione.titolo ?? 'Nessuna sezione disponibile'}
               </Text>
 
               <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${percentage}%` }]} />
+                <View style={[styles.progressFill, { width: `${roadmapPercentage}%` }]} />
               </View>
 
               <TouchableOpacity
                 style={styles.todayButton}
                 activeOpacity={0.85}
-                onPress={openAllenamentoOggi}
+                onPress={openLezioneDiOggi}
               >
                 <Ionicons name="play" size={16} color="#fff" />
-                <Text style={styles.todayButtonText}>Avvia allenamento di oggi</Text>
+                <Text style={styles.todayButtonText}>Inizia sezione di oggi</Text>
               </TouchableOpacity>
             </View>
+
+            {!entitlements?.hasPro && (
+              <View style={[styles.proOnlyCard, theme.shadows.mild]}>
+                <Text style={styles.proOnlyTitle}>Accesso solo Premium</Text>
+                <Text style={styles.proOnlyText}>Nella versione attuale non c’è contenuto free: tutte le sezioni sono Pro.</Text>
+                <TouchableOpacity
+                  style={styles.proOnlyButton}
+                  onPress={() => navigation.getParent()?.navigate('Profilo')}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.proOnlyButtonText}>Attiva Pro</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Allenati / Quiz</Text>
               <Text style={styles.sectionSubtitle}>
-                Moduli sbloccati, schema riassuntivo, quiz, sbagliati e preferiti.
+                Moduli premium con schema e quiz: roadmap progressiva stile Duolingo.
               </Text>
             </View>
 
             <View style={styles.quickActionsRow}>
               <TouchableOpacity
                 style={[styles.quickAction, theme.shadows.mild]}
-                onPress={() => (moduloCorrente ? openModulo(moduloCorrente) : null)}
+                onPress={() => navigation.navigate('AllenamentoOggi')}
                 activeOpacity={0.85}
               >
-                <Ionicons name="book-outline" size={16} color={theme.colors.accent} />
-                <Text style={styles.quickActionText}>Schema</Text>
+                <Ionicons name="git-network-outline" size={16} color={theme.colors.accent} />
+                <Text style={styles.quickActionText}>Roadmap</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -174,17 +262,19 @@ export default function HomeScreen({ navigation }: any) {
         }
         renderItem={({ item, index }) => {
           const highlight = moduloCorrente?.id === item.id;
+          const hasAccess = canAccessModulo(item, !!entitlements?.hasPro);
+
           return (
             <TouchableOpacity
-              style={[styles.moduleCard, theme.shadows.mild, highlight && styles.moduleCardHighlight]}
+              style={[styles.moduleCard, theme.shadows.mild, highlight && styles.moduleCardHighlight, !hasAccess && styles.moduleCardLocked]}
               activeOpacity={0.85}
               onPress={() => openModulo(item)}
             >
               <View style={styles.moduleTop}>
                 <Text style={styles.moduleIndex}>{String(index + 1).padStart(2, '0')}</Text>
-                <View style={[styles.stateBadge, highlight ? styles.stateBadgeActive : styles.stateBadgeIdle]}>
-                  <Text style={[styles.stateBadgeText, highlight && styles.stateBadgeTextActive]}>
-                    {highlight ? 'Attivo' : 'Sbloccato'}
+                <View style={[styles.stateBadge, hasAccess ? styles.stateBadgeActive : styles.stateBadgeIdle]}>
+                  <Text style={[styles.stateBadgeText, hasAccess && styles.stateBadgeTextActive]}>
+                    {hasAccess ? 'Sbloccato' : 'Bloccato'}
                   </Text>
                 </View>
               </View>
@@ -195,13 +285,9 @@ export default function HomeScreen({ navigation }: any) {
               </Text>
 
               <View style={styles.moduleFooter}>
-                {item.is_premium ? (
-                  <Text style={styles.modulePremium}>Pro</Text>
-                ) : (
-                  <Text style={styles.moduleFree}>Free</Text>
-                )}
+                <Text style={styles.modulePremium}>Pro</Text>
                 <View style={styles.moduleAction}>
-                  <Text style={styles.moduleActionText}>Apri</Text>
+                  <Text style={styles.moduleActionText}>{hasAccess ? 'Apri' : 'Richiede Pro'}</Text>
                   <Ionicons name="arrow-forward" size={15} color={theme.colors.accent} />
                 </View>
               </View>
@@ -257,6 +343,12 @@ const styles = StyleSheet.create({
     color: '#D7E4F1',
     fontSize: 14,
     lineHeight: 20,
+    marginBottom: 6,
+  },
+  todayCurrentSection: {
+    color: '#F4FAFF',
+    fontSize: 13,
+    fontWeight: '700',
     marginBottom: 12,
   },
   progressTrack: {
@@ -285,6 +377,38 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '900',
+  },
+  proOnlyCard: {
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: '#FFF7EA',
+    borderWidth: 1,
+    borderColor: '#F4D7A4',
+    padding: 14,
+    marginBottom: 4,
+  },
+  proOnlyTitle: {
+    color: '#7C5A11',
+    fontSize: 16,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  proOnlyText: {
+    color: '#926F1E',
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 10,
+  },
+  proOnlyButton: {
+    alignSelf: 'flex-start',
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: '#E3B457',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  proOnlyButtonText: {
+    color: '#3E2B05',
+    fontSize: 13,
+    fontWeight: '800',
   },
   sectionHeader: {
     marginBottom: 4,
@@ -331,6 +455,9 @@ const styles = StyleSheet.create({
     borderColor: '#BFD4E8',
     backgroundColor: '#FBFDFF',
   },
+  moduleCardLocked: {
+    opacity: 0.55,
+  },
   moduleTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -349,13 +476,13 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   stateBadgeIdle: {
-    backgroundColor: theme.colors.accentLight,
+    backgroundColor: '#E9EDF3',
   },
   stateBadgeActive: {
     backgroundColor: '#E9F8F0',
   },
   stateBadgeText: {
-    color: theme.colors.accent,
+    color: '#64748B',
     fontSize: 10,
     fontWeight: '800',
     textTransform: 'uppercase',
@@ -385,11 +512,6 @@ const styles = StyleSheet.create({
   },
   modulePremium: {
     color: theme.colors.warning,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  moduleFree: {
-    color: theme.colors.success,
     fontSize: 12,
     fontWeight: '800',
   },
