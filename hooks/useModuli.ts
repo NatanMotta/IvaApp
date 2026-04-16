@@ -6,7 +6,6 @@ export type Modulo = {
   titolo: string;
   descrizione: string;
   ordine: number;
-  is_premium: boolean;
 };
 
 export function useModuli() {

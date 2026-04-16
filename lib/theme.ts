@@ -17,8 +17,20 @@ export const theme = {
     warning: '#F59E0B',      // Arancione (per etichette PRO)
     warningBg: '#FEF3C7',
   },
+  gradients: {
+    hero: ['#1A3A5C', '#2C5A8B'] as const,
+    appBackground: ['#F6F9FD', '#EDF3FA'] as const,
+    authHero: ['#0F2E4A', '#1E4F77'] as const,
+  },
   typography: {
     fontFamily: undefined, // Setup futuro se serve (es. Inter, Poppins)
+  },
+  spacing: {
+    xs: 6,
+    sm: 10,
+    md: 16,
+    lg: 20,
+    xl: 28,
   },
   shadows: {
     premium: {

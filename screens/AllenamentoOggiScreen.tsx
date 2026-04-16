@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useModuli } from '../hooks/useModuli';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { useRoadmapProgress } from '../hooks/useRoadmapProgress';
@@ -75,120 +76,122 @@ export default function AllenamentoOggiScreen({ navigation }: any) {
 
   if (isLoading) {
     return (
-      <View style={styles.centered}>
+      <SafeAreaView style={styles.centered} edges={['left', 'right']}>
         <ActivityIndicator size="large" color={theme.colors.accent} />
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!entitlements?.hasPro) {
     return (
-      <View style={styles.centeredLocked}>
+      <SafeAreaView style={styles.centeredLocked} edges={['left', 'right']}>
         <Text style={styles.lockedTitle}>Solo piano Pro</Text>
         <Text style={styles.lockedText}>Tutto il percorso Allenamento è disponibile solo con abbonamento premium.</Text>
         <TouchableOpacity style={styles.lockedButton} onPress={() => navigation.getParent()?.navigate('Profilo')}>
           <Text style={styles.lockedButtonText}>Vai al profilo</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={[styles.hero, theme.shadows.mild]}>
-        <Text style={styles.heroKicker}>Allenamento di oggi</Text>
-        <Text style={styles.heroTitle}>{totals.percentage}% completato</Text>
-        <Text style={styles.heroSubtitle}>Roadmap sequenziale: in ogni modulo è cliccabile solo la prossima sezione.</Text>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={[styles.hero, theme.shadows.mild]}>
+          <Text style={styles.heroKicker}>Allenamento di oggi</Text>
+          <Text style={styles.heroTitle}>{totals.percentage}% completato</Text>
+          <Text style={styles.heroSubtitle}>Roadmap sequenziale: in ogni modulo è cliccabile solo la prossima sezione.</Text>
 
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${totals.percentage}%` }]} />
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${totals.percentage}%` }]} />
+          </View>
         </View>
-      </View>
 
-      {roadmapModuli.map((modulo, moduloIndex) => {
-        const moduloSezioni = sezioniByModulo[modulo.id] || [];
-        const completedIds = completedByModulo[String(modulo.id)] || [];
-        const activeIndex = moduloSezioni.findIndex((sezione) => !completedIds.includes(sezione.id));
+        {roadmapModuli.map((modulo, moduloIndex) => {
+          const moduloSezioni = sezioniByModulo[modulo.id] || [];
+          const completedIds = completedByModulo[String(modulo.id)] || [];
+          const activeIndex = moduloSezioni.findIndex((sezione) => !completedIds.includes(sezione.id));
 
-        return (
-          <View key={modulo.id} style={[styles.moduloCard, theme.shadows.mild]}>
-            <Text style={styles.moduloTitle}>{moduloIndex + 1}. {modulo.titolo}</Text>
+          return (
+            <View key={modulo.id} style={[styles.moduloCard, theme.shadows.mild]}>
+              <Text style={styles.moduloTitle}>{moduloIndex + 1}. {modulo.titolo}</Text>
 
-            <View style={styles.sezioniList}>
-              {moduloSezioni.map((sezione, sezioneIndex) => {
-                const isDone = completedIds.includes(sezione.id);
-                const isActive = activeIndex === -1 ? false : sezioneIndex === activeIndex;
-                const isLocked = !isDone && !isActive;
+              <View style={styles.sezioniList}>
+                {moduloSezioni.map((sezione, sezioneIndex) => {
+                  const isDone = completedIds.includes(sezione.id);
+                  const isActive = activeIndex === -1 ? false : sezioneIndex === activeIndex;
+                  const isLocked = !isDone && !isActive;
 
-                return (
-                  <View
-                    key={sezione.id}
-                    style={[styles.sezioneItem, isLocked && styles.sezioneItemLocked, isActive && styles.sezioneItemActive]}
-                  >
-                    <View style={styles.sezioneTopRow}>
-                      <Text style={styles.sezioneTitle}>{sezioneIndex + 1}. {sezione.titolo}</Text>
-                      {isDone ? (
-                        <Ionicons name="checkmark-circle" size={18} color={theme.colors.success} />
-                      ) : isLocked ? (
-                        <Ionicons name="lock-closed" size={16} color={theme.colors.textMuted} />
-                      ) : (
-                        <Ionicons name="play-circle" size={18} color={theme.colors.accent} />
+                  return (
+                    <View
+                      key={sezione.id}
+                      style={[styles.sezioneItem, isLocked && styles.sezioneItemLocked, isActive && styles.sezioneItemActive]}
+                    >
+                      <View style={styles.sezioneTopRow}>
+                        <Text style={styles.sezioneTitle}>{sezioneIndex + 1}. {sezione.titolo}</Text>
+                        {isDone ? (
+                          <Ionicons name="checkmark-circle" size={18} color={theme.colors.success} />
+                        ) : isLocked ? (
+                          <Ionicons name="lock-closed" size={16} color={theme.colors.textMuted} />
+                        ) : (
+                          <Ionicons name="play-circle" size={18} color={theme.colors.accent} />
+                        )}
+                      </View>
+
+                      {!isLocked && !isDone && (
+                        <View style={styles.sezioneActions}>
+                          <TouchableOpacity
+                            style={styles.primaryBtn}
+                            onPress={() => navigation.navigate('DettaglioSezione', {
+                              sezioneId: sezione.id,
+                              sezioneTitolo: sezione.titolo,
+                              moduloId: modulo.id,
+                              isRipassoErrori: false,
+                            })}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={styles.primaryBtnText}>Apri sezione</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.secondaryBtn}
+                            onPress={() => markSectionCompleted(modulo.id, sezione.id)}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={styles.secondaryBtnText}>Segna completata</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+
+                      {isDone && (
+                        <View style={styles.sezioneActions}>
+                          <TouchableOpacity
+                            style={styles.primaryBtn}
+                            onPress={() => navigation.navigate('DettaglioSezione', {
+                              sezioneId: sezione.id,
+                              sezioneTitolo: sezione.titolo,
+                              moduloId: modulo.id,
+                              isRipassoErrori: false,
+                            })}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={styles.primaryBtnText}>Riapri sezione</Text>
+                          </TouchableOpacity>
+                        </View>
                       )}
                     </View>
-
-                    {!isLocked && !isDone && (
-                      <View style={styles.sezioneActions}>
-                        <TouchableOpacity
-                          style={styles.primaryBtn}
-                          onPress={() => navigation.navigate('DettaglioSezione', {
-                            sezioneId: sezione.id,
-                            sezioneTitolo: sezione.titolo,
-                            moduloId: modulo.id,
-                            isRipassoErrori: false,
-                          })}
-                          activeOpacity={0.85}
-                        >
-                          <Text style={styles.primaryBtnText}>Apri sezione</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={styles.secondaryBtn}
-                          onPress={() => markSectionCompleted(modulo.id, sezione.id)}
-                          activeOpacity={0.85}
-                        >
-                          <Text style={styles.secondaryBtnText}>Segna completata</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-
-                    {isDone && (
-                      <View style={styles.sezioneActions}>
-                        <TouchableOpacity
-                          style={styles.primaryBtn}
-                          onPress={() => navigation.navigate('DettaglioSezione', {
-                            sezioneId: sezione.id,
-                            sezioneTitolo: sezione.titolo,
-                            moduloId: modulo.id,
-                            isRipassoErrori: false,
-                          })}
-                          activeOpacity={0.85}
-                        >
-                          <Text style={styles.primaryBtnText}>Riapri sezione</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
+                  );
+                })}
+              </View>
             </View>
-          </View>
-        );
-      })}
+          );
+        })}
 
-      <TouchableOpacity style={styles.resetButton} onPress={resetRoadmap} activeOpacity={0.85}>
-        <Text style={styles.resetButtonText}>Reset roadmap</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <TouchableOpacity style={styles.resetButton} onPress={resetRoadmap} activeOpacity={0.85}>
+          <Text style={styles.resetButtonText}>Reset roadmap</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -198,7 +201,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   content: {
-    padding: 16,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
     paddingBottom: 40,
     gap: 12,
   },

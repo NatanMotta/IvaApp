@@ -66,10 +66,7 @@ as $$
     from public.moduli m
     where m.id = p_modulo_id
       and m.is_attivo = true
-      and (
-        m.is_premium = false
-        or public.user_has_pro_access(p_user_id)
-      )
+      and public.user_has_pro_access(p_user_id)
   );
 $$;
 
@@ -93,21 +90,17 @@ for update
 using (auth.uid() = id)
 with check (auth.uid() = id);
 
--- moduli: only active rows and only if entitlement allows
--- NOTE: keeps premium rows hidden for free users
+-- moduli: only active rows for Pro users (all content is premium)
 drop policy if exists moduli_select_entitled on public.moduli;
 create policy moduli_select_entitled
 on public.moduli
 for select
 using (
   is_attivo = true
-  and (
-    is_premium = false
-    or public.user_has_pro_access(auth.uid())
-  )
+  and public.user_has_pro_access(auth.uid())
 );
 
--- sezioni: visible only if parent modulo is accessible
+-- sezioni: visible only if parent modulo is accessible by Pro entitlement
 drop policy if exists sezioni_select_entitled on public.sezioni;
 create policy sezioni_select_entitled
 on public.sezioni
@@ -119,14 +112,11 @@ using (
     from public.moduli m
     where m.id = sezioni.modulo_id
       and m.is_attivo = true
-      and (
-        m.is_premium = false
-        or public.user_has_pro_access(auth.uid())
-      )
+      and public.user_has_pro_access(auth.uid())
   )
 );
 
--- quiz: visible only if parent modulo is accessible
+-- quiz: visible only if parent modulo is accessible by Pro entitlement
 drop policy if exists quiz_select_entitled on public.quiz;
 create policy quiz_select_entitled
 on public.quiz
@@ -140,10 +130,7 @@ using (
     where s.id = quiz.sezione_id
       and s.is_attivo = true
       and m.is_attivo = true
-      and (
-        m.is_premium = false
-        or public.user_has_pro_access(auth.uid())
-      )
+      and public.user_has_pro_access(auth.uid())
   )
 );
 

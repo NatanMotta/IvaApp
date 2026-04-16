@@ -13,8 +13,12 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
+import { theme } from '../lib/theme';
 
 export default function AuthScreen() {
   // 'login' | 'register' — quale form mostrare
@@ -115,121 +119,156 @@ export default function AuthScreen() {
 
   // ── INTERFACCIA ────────────────────────────────────────────
   return (
-    // KeyboardAvoidingView sposta il contenuto verso l'alto
-    // quando appare la tastiera, evitando che copra i campi
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      {/* Logo / Titolo */}
-      <View style={styles.header}>
-        <Text style={styles.logo}>IvaApp</Text>
-        <Text style={styles.sottotitolo}>
-          {modalita === 'login' ? 'Accedi al tuo account' : 'Crea il tuo account'}
-        </Text>
-      </View>
-
-      {/* Form */}
-      <View style={styles.form}>
-
-        {/* Campo nome — visibile solo in registrazione */}
-        {modalita === 'register' && (
-          <TextInput
-            style={styles.input}
-            placeholder="Nome"
-            value={nome}
-            onChangeText={setNome}
-            autoCapitalize="words"
-          />
-        )}
-
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry  // nasconde il testo
-        />
-
-        {/* Bottone principale */}
-        <TouchableOpacity
-          style={styles.bottone}
-          onPress={modalita === 'login' ? handleLogin : handleRegistrazione}
-          disabled={loading}
+    <LinearGradient colors={theme.gradients.appBackground} style={styles.gradientWrap}>
+      <SafeAreaView style={styles.safe}>
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.bottoneText}>
-              {modalita === 'login' ? 'Accedi' : 'Registrati'}
-            </Text>
-          )}
-        </TouchableOpacity>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <LinearGradient
+              colors={theme.gradients.authHero}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.header, theme.shadows.mild]}
+            >
+              <Text style={styles.logo}>IvaApp</Text>
+              <Text style={styles.sottotitolo}>
+                {modalita === 'login' ? 'Accedi al tuo account premium' : 'Crea il tuo account premium'}
+              </Text>
+            </LinearGradient>
 
-        {/* Switch login/registrazione */}
-        <TouchableOpacity
-          onPress={() => setModalita(modalita === 'login' ? 'register' : 'login')}
-        >
-          <Text style={styles.switchText}>
-            {modalita === 'login'
-              ? 'Non hai un account? Registrati'
-              : 'Hai già un account? Accedi'}
-          </Text>
-        </TouchableOpacity>
+            <View style={[styles.formCard, theme.shadows.premium]}>
+              <Text style={styles.formTitle}>{modalita === 'login' ? 'Bentornato' : 'Nuovo account'}</Text>
 
-      </View>
-    </KeyboardAvoidingView>
+              {modalita === 'register' && (
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nome"
+                  placeholderTextColor={theme.colors.textMuted}
+                  value={nome}
+                  onChangeText={setNome}
+                  autoCapitalize="words"
+                />
+              )}
+
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                placeholderTextColor={theme.colors.textMuted}
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor={theme.colors.textMuted}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+
+              <TouchableOpacity
+                style={styles.bottone}
+                onPress={modalita === 'login' ? handleLogin : handleRegistrazione}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.bottoneText}>
+                    {modalita === 'login' ? 'Accedi' : 'Registrati'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setModalita(modalita === 'login' ? 'register' : 'login')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.switchText}>
+                  {modalita === 'login'
+                    ? 'Non hai un account? Registrati'
+                    : 'Hai già un account? Accedi'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  gradientWrap: {
+    flex: 1,
+  },
+  safe: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
-    padding: 24,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.lg,
   },
   header: {
-    alignItems: 'center',
-    marginBottom: 40,
+    borderRadius: theme.borderRadius.xl,
+    padding: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
   },
   logo: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: '#1A3A5C',
-    marginBottom: 8,
+    fontSize: 34,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginBottom: 6,
   },
   sottotitolo: {
-    fontSize: 16,
-    color: '#6B7280',
+    fontSize: 15,
+    color: '#D2DFED',
+    lineHeight: 21,
   },
-  form: {
-    gap: 12, // spazio tra i campi
+  formCard: {
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.borderRadius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: theme.spacing.md,
+    gap: theme.spacing.sm,
+  },
+  formTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: theme.colors.text,
+    marginBottom: 2,
   },
   input: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F9FBFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
+    borderColor: '#DCE7F2',
+    borderRadius: theme.borderRadius.md,
     padding: 14,
     fontSize: 16,
-    color: '#111827',
+    color: theme.colors.text,
   },
   bottone: {
-    backgroundColor: '#2E86AB',
-    borderRadius: 10,
+    backgroundColor: theme.colors.accent,
+    borderRadius: theme.borderRadius.md,
     padding: 16,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 2,
   },
   bottoneText: {
     color: '#FFFFFF',
@@ -238,8 +277,9 @@ const styles = StyleSheet.create({
   },
   switchText: {
     textAlign: 'center',
-    color: '#2E86AB',
+    color: theme.colors.accent,
     fontSize: 14,
-    marginTop: 8,
+    marginTop: 6,
+    fontWeight: '700',
   },
 });
