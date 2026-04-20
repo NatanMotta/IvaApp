@@ -25,6 +25,9 @@ npm install
 ```env
 EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+EXPO_PUBLIC_BILLING_SUCCESS_URL=https://your-domain.com/billing/success
+EXPO_PUBLIC_BILLING_CANCEL_URL=https://your-domain.com/billing/cancel
+EXPO_PUBLIC_BILLING_PORTAL_RETURN_URL=https://your-domain.com/billing/return
 ```
 
 3. Avvia app:
@@ -88,12 +91,19 @@ Assicurati che policy RLS e permessi siano coerenti con i flussi di lettura/scri
 2. Deploy funzione webhook Stripe:
    - File funzione:
      - `supabase/functions/stripe-webhook/index.ts`
+     - `supabase/functions/stripe-manage-subscription/index.ts`
    - Richiede Supabase CLI installata e progetto linkato.
    - Comandi:
 
 ```bash
 supabase functions deploy stripe-webhook
+supabase functions deploy stripe-manage-subscription
 supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_xxx
+supabase secrets set STRIPE_SECRET_KEY=sk_live_xxx
+supabase secrets set STRIPE_PRO_PRICE_ID=price_xxx
+supabase secrets set STRIPE_SUCCESS_URL=https://your-domain.com/billing/success
+supabase secrets set STRIPE_CANCEL_URL=https://your-domain.com/billing/cancel
+supabase secrets set STRIPE_BILLING_RETURN_URL=https://your-domain.com/billing/return
 ```
 
 3. Configura endpoint in Stripe:
@@ -109,3 +119,9 @@ supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_xxx
 4. Associa checkout a utente app:
    - Quando crei una Checkout Session Stripe, passa `client_reference_id = user.id` (uuid Supabase).
    - In questo modo il webhook aggiorna `profiles` in modo diretto.
+
+5. Gestione abbonamento da app (Profilo):
+   - La schermata `Il mio profilo` invoca la Edge Function `stripe-manage-subscription`.
+   - Se utente senza piano attivo: viene creato Checkout Stripe (subscription).
+   - Se utente già Pro/trial/past_due: viene aperto Stripe Customer Portal.
+   - La function restituisce `url`, e l’app apre il browser in automatico.

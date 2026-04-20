@@ -13,6 +13,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import { useEntitlements } from '../hooks/useEntitlements';
@@ -72,10 +73,12 @@ function ActionRow({
 }
 
 export default function ProfiloScreen() {
-  const { data: entitlements } = useEntitlements();
+  const { data: entitlements, refetch: refetchEntitlements } = useEntitlements();
+  const queryClient = useQueryClient();
   const [profilo, setProfilo] = useState<ProfiloBase>({ nome: 'Utente', email: '' });
   const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFS);
   const [loading, setLoading] = useState(true);
+  const [billingLoading, setBillingLoading] = useState(false);
 
   const piano = useMemo(
     () => (entitlements?.tier === 'pro' ? 'Pro' : 'Free'),
@@ -183,13 +186,49 @@ export default function ProfiloScreen() {
     );
   }
 
-  function handleSubscription() {
-    Alert.alert(
-      'Gestione subscription',
-      entitlements?.hasPro
-        ? 'Il tuo piano Pro risulta attivo. Per modifiche contatta supporto@ivaapp.it.'
-        : 'Se vuoi passare a Pro, scrivi a supporto@ivaapp.it per attivazione manuale.'
-    );
+  async function handleSubscription() {
+    if (billingLoading) return;
+
+    try {
+      setBillingLoading(true);
+
+      const { data, error } = await supabase.functions.invoke('stripe-manage-subscription', {
+        body: {
+          // Usa una pagina web tua come ponte (deeplink/universal link verso app).
+          // Puoi sovrascrivere questi valori con i secret della function lato Supabase.
+          successUrl: process.env.EXPO_PUBLIC_BILLING_SUCCESS_URL,
+          cancelUrl: process.env.EXPO_PUBLIC_BILLING_CANCEL_URL,
+          portalReturnUrl: process.env.EXPO_PUBLIC_BILLING_PORTAL_RETURN_URL,
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const url = data?.url;
+      if (!url || typeof url !== 'string') {
+        throw new Error('URL checkout non disponibile');
+      }
+
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        throw new Error('Impossibile aprire il checkout su questo dispositivo');
+      }
+
+      await Linking.openURL(url);
+    } catch (e) {
+      const message =
+        e instanceof Error
+          ? e.message
+          : 'Non riesco ad aprire la gestione abbonamento. Verifica Stripe/Supabase e riprova.';
+
+      Alert.alert('Gestisci abbonamento', message);
+    } finally {
+      setBillingLoading(false);
+      await queryClient.invalidateQueries({ queryKey: ['entitlements'] });
+      await refetchEntitlements();
+    }
   }
 
   if (loading) {
@@ -292,8 +331,12 @@ export default function ProfiloScreen() {
         </Text>
         <ActionRow
           icon="card-outline"
-          title="Gestisci abbonamento"
-          subtitle="Aggiorna piano, pagamento e fatturazione."
+          title={billingLoading ? 'Apertura checkout...' : 'Gestisci abbonamento'}
+          subtitle={
+            entitlements?.hasPro
+              ? 'Apri il portale Stripe per piano, pagamento e fatture.'
+              : 'Attiva Pro con checkout Stripe e ritorno in app.'
+          }
           onPress={handleSubscription}
         />
       </View>
