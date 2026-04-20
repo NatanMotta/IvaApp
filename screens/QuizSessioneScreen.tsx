@@ -28,6 +28,7 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
     isRipassoErrori,
     quizPerSprint = 20,
     quizScope,
+    sezioneIds,
   } = route.params;
   const scrollViewRef = useRef<ScrollView>(null);
   const { data: entitlements } = useEntitlements();
@@ -44,6 +45,7 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
     sezioneId: isRipassoErrori ? 0 : sezioneId,
     isRipassoErrori,
     moduloId,
+    sezioneIds: Array.isArray(sezioneIds) ? sezioneIds : [],
     quizPerSprint,
   });
 
@@ -52,7 +54,7 @@ export default function QuizSessioneScreen({ route, navigation }: any) {
 
   const quizScoped = useMemo(() => {
     // Guard rail lato UI: in modalità sezione mostra solo quiz della sezione corrente.
-    if (!isRipassoErrori && quizScope !== 'modulo' && sezioneId) {
+    if (!isRipassoErrori && quizScope !== 'modulo' && quizScope !== 'custom-sezioni' && sezioneId) {
       return quiz.filter((q) => q.sezione_id === sezioneId);
     }
     return quiz;

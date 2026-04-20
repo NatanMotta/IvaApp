@@ -18,11 +18,12 @@ export function useQuizSessione(params: {
   sezioneId: number;
   isRipassoErrori: boolean;
   moduloId?: number;
+  sezioneIds?: number[];
   quizPerSprint?: number;
 }) {
-  const { sezioneId, isRipassoErrori, moduloId, quizPerSprint = QUIZ_PER_SPRINT } = params;
+  const { sezioneId, isRipassoErrori, moduloId, sezioneIds = [], quizPerSprint = QUIZ_PER_SPRINT } = params;
   return useQuery({
-    queryKey: ['quiz_sessione', sezioneId, isRipassoErrori, moduloId, quizPerSprint],
+    queryKey: ['quiz_sessione', sezioneId, isRipassoErrori, moduloId, [...sezioneIds].sort().join(','), quizPerSprint],
     queryFn: async () => {
       if (isRipassoErrori) {
         const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -73,11 +74,18 @@ export function useQuizSessione(params: {
           .sort(() => Math.random() - 0.5)
           .slice(0, quizPerSprint) as Quiz[];
       } else {
-        const { data, error } = await supabase
+        let query = supabase
           .from('quiz')
           .select('*')
-          .eq('sezione_id', sezioneId)
           .eq('is_attivo', true);
+
+        if (sezioneIds.length > 0) {
+          query = query.in('sezione_id', sezioneIds);
+        } else {
+          query = query.eq('sezione_id', sezioneId);
+        }
+
+        const { data, error } = await query;
 
         if (error) {
           throw new Error(error.message);
@@ -88,7 +96,7 @@ export function useQuizSessione(params: {
           .slice(0, quizPerSprint) as Quiz[];
       }
     },
-    enabled: isRipassoErrori ? (!!moduloId || !!sezioneId) : !!sezioneId,
+    enabled: isRipassoErrori ? (!!moduloId || !!sezioneId) : (!!sezioneId || sezioneIds.length > 0),
     staleTime: 0, // Vogliamo sempre randomizzare
     gcTime: 0, // Non tenere in cache così quando rientra avrà un set nuovo, oppure no? Mettiamo staleTime 0 ma gcTime standard
   });

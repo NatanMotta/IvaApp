@@ -12,12 +12,10 @@ import { supabase } from './lib/supabase';
 import AuthScreen from './screens/AuthScreen';
 import HomeScreen from './screens/HomeScreen';
 import QuizScreen from './screens/QuizScreen';
-import ChatbotScreen from './screens/ChatbotScreen';
 import ProfiloScreen from './screens/ProfiloScreen';
 import SezioniScreen from './screens/SezioniScreen';
 import DettaglioSezioneScreen from './screens/DettaglioSezioneScreen';
 import QuizSessioneScreen from './screens/QuizSessioneScreen';
-import RipassoScreen from './screens/RipassoScreen';
 import AllenamentoOggiScreen from './screens/AllenamentoOggiScreen';
 
 const Tab = createBottomTabNavigator();
@@ -77,29 +75,6 @@ function HomeStackNavigator() {
   );
 }
 
-function RipassoStackNavigator() {
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: theme.colors.primary, shadowOpacity: 0, elevation: 0 },
-        headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: '800' },
-      }}
-    >
-      <Stack.Screen
-        name="RipassoMain"
-        component={RipassoScreen}
-        options={{ title: 'Ripasso Errori' }}
-      />
-      <Stack.Screen
-        name="QuizSessioneRipasso"
-        component={QuizSessioneScreen}
-        options={{ title: 'Sprint Ripasso' }}
-      />
-    </Stack.Navigator>
-  );
-}
-
 function QuizStackNavigator() {
   return (
     <Stack.Navigator
@@ -112,7 +87,7 @@ function QuizStackNavigator() {
       <Stack.Screen
         name="QuizMain"
         component={QuizScreen}
-        options={{ title: 'Quiz' }}
+        options={{ title: 'Percorso in autonomia' }}
       />
       <Stack.Screen
         name="QuizSessione"
@@ -167,9 +142,7 @@ function MainApp() {
           tabBarIcon: ({ color, size, focused }) => {
             const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
               Home: focused ? 'home' : 'home-outline',
-              Quiz: focused ? 'checkbox' : 'checkbox-outline',
-              Chatbot: focused ? 'chatbubble-ellipses' : 'chatbubble-ellipses-outline',
-              Ripasso: focused ? 'refresh-circle' : 'refresh-circle-outline',
+              Percorso: focused ? 'reorder-three' : 'reorder-three-outline',
               Profilo: focused ? 'person' : 'person-outline',
             };
             // Ingrandiamo leggermente l'icona selezionata
@@ -196,15 +169,9 @@ function MainApp() {
           component={HomeStackNavigator}
         />
         <Tab.Screen
-          name="Quiz"
-          options={{ headerShown: false, title: 'Quiz' }}
+          name="Percorso"
+          options={{ headerShown: false, title: 'Percorso in autonomia' }}
           component={QuizStackNavigator}
-        />
-        <Tab.Screen name="Chatbot" component={ChatbotScreen} options={{ title: 'Assistente IVA' }} />
-        <Tab.Screen
-          name="Ripasso"
-          options={{ headerShown: false, title: 'Ripasso Errori' }}
-          component={RipassoStackNavigator}
         />
         <Tab.Screen name="Profilo" component={ProfiloScreen} options={{ title: 'Il mio profilo' }} />
       </Tab.Navigator>

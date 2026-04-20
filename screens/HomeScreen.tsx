@@ -186,14 +186,14 @@ export default function HomeScreen({ navigation }: any) {
           <>
             <View style={[styles.todayCard, theme.shadows.mild]}>
               <View style={styles.todayTopRow}>
-                <Text style={styles.todayTitle}>Allenamento di oggi</Text>
+                <Text style={styles.todayTitle}>Il tuo percorso guidato</Text>
                 <Text style={styles.todayPercent}>{roadmapPercentage}%</Text>
               </View>
               <Text style={styles.todaySubtitle}>
-                Roadmap in ordine su 2 moduli: una sezione alla volta, le successive restano bloccate.
+                Modulo: {moduloCorrente?.titolo ?? '-'}
               </Text>
               <Text style={styles.todayCurrentSection}>
-                Sezione corrente: {primaSezioneSbloccata?.sezione.titolo ?? 'Nessuna sezione disponibile'}
+                Sezione: {primaSezioneSbloccata?.sezione.titolo ?? 'Nessuna sezione disponibile'}
               </Text>
 
               <View style={styles.progressTrack}>
@@ -206,7 +206,7 @@ export default function HomeScreen({ navigation }: any) {
                 onPress={openLezioneDiOggi}
               >
                 <Ionicons name="play" size={16} color="#fff" />
-                <Text style={styles.todayButtonText}>Inizia sezione di oggi</Text>
+                <Text style={styles.todayButtonText}>Riprendi</Text>
               </TouchableOpacity>
             </View>
 
@@ -225,9 +225,9 @@ export default function HomeScreen({ navigation }: any) {
             )}
 
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Allenati / Quiz</Text>
+              <Text style={styles.sectionTitle}>Allenati</Text>
               <Text style={styles.sectionSubtitle}>
-                Moduli premium con schema e quiz: roadmap progressiva.
+                Scegli il tuo allenamento.
               </Text>
             </View>
 
@@ -237,26 +237,35 @@ export default function HomeScreen({ navigation }: any) {
                 onPress={() => navigation.navigate('AllenamentoOggi')}
                 activeOpacity={0.85}
               >
-                <Ionicons name="git-network-outline" size={16} color={theme.colors.accent} />
-                <Text style={styles.quickActionText}>Roadmap</Text>
+                <View style={styles.quickActionIconWrap}>
+                  <Ionicons name="rocket-outline" size={18} color={theme.colors.accent} />
+                </View>
+                <Text style={styles.quickActionText}>Inizia</Text>
+                <Text style={styles.quickActionSubtext}>Sessione guidata</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.quickAction, theme.shadows.mild]}
-                onPress={() => navigation.getParent()?.navigate('Quiz')}
+                onPress={() => navigation.getParent()?.navigate('Percorso')}
                 activeOpacity={0.85}
               >
-                <Ionicons name="help-circle-outline" size={16} color={theme.colors.accent} />
-                <Text style={styles.quickActionText}>Quiz</Text>
+                <View style={styles.quickActionIconWrap}>
+                  <Ionicons name="options-outline" size={18} color={theme.colors.accent} />
+                </View>
+                <Text style={styles.quickActionText}>Allenamento personalizzato</Text>
+                <Text style={styles.quickActionSubtext}>Scegli gli argomenti</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.quickAction, theme.shadows.mild]}
-                onPress={() => navigation.getParent()?.navigate('Ripasso')}
+                onPress={() => navigation.getParent()?.navigate('Percorso')}
                 activeOpacity={0.85}
               >
-                <Ionicons name="refresh-outline" size={16} color={theme.colors.accent} />
-                <Text style={styles.quickActionText}>Sbagliati</Text>
+                <View style={styles.quickActionIconWrap}>
+                  <Ionicons name="refresh-circle-outline" size={18} color={theme.colors.accent} />
+                </View>
+                <Text style={styles.quickActionText}>Ripassa gli errori</Text>
+                <Text style={styles.quickActionSubtext}>Correggi e migliora</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -428,23 +437,46 @@ const styles = StyleSheet.create({
   },
   quickActionsRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 4,
+    gap: 10,
+    marginBottom: 6,
   },
   quickAction: {
     flex: 1,
     backgroundColor: '#fff',
-    borderRadius: theme.borderRadius.md,
+    borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingVertical: 10,
+    borderColor: '#DEE7F2',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     alignItems: 'center',
-    gap: 5,
+    justifyContent: 'center',
+    minHeight: 106,
+  },
+  quickActionIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#EDF4FC',
+    borderWidth: 1,
+    borderColor: '#D4E2F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 7,
   },
   quickActionText: {
     color: theme.colors.text,
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 12.5,
+    fontWeight: '900',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  quickActionSubtext: {
+    marginTop: 4,
+    color: theme.colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 14,
   },
   moduleCard: {
     backgroundColor: '#fff',

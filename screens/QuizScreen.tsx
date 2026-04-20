@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,131 +9,164 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  ScrollView,
 } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../lib/theme';
 import { useModuli } from '../hooks/useModuli';
-import { useSezioni } from '../hooks/useSezioni';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { canAccessModulo } from '../lib/entitlements';
+import { useRoadmapProgress } from '../hooks/useRoadmapProgress';
+import { supabase } from '../lib/supabase';
 
-type Option = { id: number; label: string; subtitle?: string };
-
-function SelectModal({
-  visible,
-  title,
-  options,
-  selectedId,
-  onClose,
-  onSelect,
-}: {
-  visible: boolean;
-  title: string;
-  options: Option[];
-  selectedId: number | null;
-  onClose: () => void;
-  onSelect: (opt: Option) => void;
-}) {
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Pressable style={[styles.modalSheet, theme.shadows.premium]} onPress={() => null}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{title}</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={styles.modalClose}>Chiudi</Text>
-            </TouchableOpacity>
-          </View>
-
-          <FlatList
-            data={options}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={({ item }) => {
-              const selected = item.id === selectedId;
-              return (
-                <TouchableOpacity
-                  style={[styles.optionRow, selected && styles.optionRowSelected]}
-                  onPress={() => onSelect(item)}
-                  activeOpacity={0.8}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.optionLabel, selected && styles.optionLabelSelected]} numberOfLines={2}>
-                      {item.label}
-                    </Text>
-                    {!!item.subtitle && (
-                      <Text style={styles.optionSubtitle} numberOfLines={2}>
-                        {item.subtitle}
-                      </Text>
-                    )}
-                  </View>
-                  {selected && <Text style={styles.optionCheck}>✓</Text>}
-                </TouchableOpacity>
-              );
-            }}
-            ItemSeparatorComponent={() => <View style={styles.optionSeparator} />}
-            contentContainerStyle={{ paddingBottom: 24 }}
-            showsVerticalScrollIndicator={false}
-          />
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
+type SezioneLite = {
+  id: number;
+  modulo_id: number;
+  titolo: string;
+  ordine: number;
+};
 
 export default function QuizScreen({ navigation }: any) {
   const { data: moduli = [], isLoading: moduliLoading, isError: moduliError } = useModuli();
   const { data: entitlements } = useEntitlements();
+  const { completedByModulo } = useRoadmapProgress();
 
-  const [moduloId, setModuloId] = useState<number | null>(null);
-  const [sezioneId, setSezioneId] = useState<number | null>(null);
-  const [quizPerSprint, setQuizPerSprint] = useState<10 | 20>(10);
+  const [quizPerSprint, setQuizPerSprint] = useState<20 | 35 | 50>(20);
+  const [customModalOpen, setCustomModalOpen] = useState(false);
+  const [expandedModuloId, setExpandedModuloId] = useState<number | null>(null);
+  const [selectedCustomSezioni, setSelectedCustomSezioni] = useState<number[]>([]);
 
-  const [moduloModalOpen, setModuloModalOpen] = useState(false);
-  const [sezioneModalOpen, setSezioneModalOpen] = useState(false);
+  const hasPro = !!entitlements?.hasPro;
+  const moduliAccessibili = useMemo(
+    () => moduli.filter((m) => canAccessModulo(m, hasPro)),
+    [hasPro, moduli]
+  );
+  const moduloIds = useMemo(() => moduliAccessibili.map((m) => m.id), [moduliAccessibili]);
 
-  useEffect(() => {
-    if (!moduloId && moduli.length > 0) {
-      const primoAccessibile = moduli.find((m) => canAccessModulo(m, !!entitlements?.hasPro));
-      setModuloId((primoAccessibile ?? moduli[0]).id);
+  const { data: allSezioni = [], isLoading: sezioniLoading } = useQuery({
+    queryKey: ['allenati_all_sezioni', moduloIds],
+    queryFn: async () => {
+      if (moduloIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('sezioni')
+        .select('id, modulo_id, titolo, ordine')
+        .in('modulo_id', moduloIds)
+        .eq('is_attivo', true)
+        .order('modulo_id', { ascending: true })
+        .order('ordine', { ascending: true });
+      if (error) throw new Error(error.message);
+      return (data || []) as SezioneLite[];
+    },
+    enabled: moduloIds.length > 0,
+  });
+
+  const sezioniByModulo = useMemo(() => {
+    const grouped: Record<number, SezioneLite[]> = {};
+    for (const sezione of allSezioni) {
+      if (!grouped[sezione.modulo_id]) grouped[sezione.modulo_id] = [];
+      grouped[sezione.modulo_id].push(sezione);
     }
-  }, [entitlements?.hasPro, moduli, moduloId]);
+    return grouped;
+  }, [allSezioni]);
 
-  const moduloSelected = moduli.find((m) => m.id === moduloId) ?? null;
-  const moduloLocked = moduloSelected ? !canAccessModulo(moduloSelected, !!entitlements?.hasPro) : false;
+  const unlockedSezioneIds = useMemo(() => {
+    const ids: number[] = [];
 
-  const { data: sezioni = [], isLoading: sezioniLoading } = useSezioni(moduloLocked ? 0 : (moduloId ?? 0));
+    for (const modulo of moduliAccessibili) {
+      const sezioniModulo = sezioniByModulo[modulo.id] || [];
+      const completed = completedByModulo[String(modulo.id)] || [];
 
-  useEffect(() => {
-    if (sezioni.length === 0) {
-      setSezioneId(null);
+      ids.push(...completed);
+
+      const nextUnlocked = sezioniModulo.find((s) => !completed.includes(s.id));
+      if (nextUnlocked) ids.push(nextUnlocked.id);
+    }
+
+    return Array.from(new Set(ids));
+  }, [completedByModulo, moduliAccessibili, sezioniByModulo]);
+
+  function ensurePremiumAccess() {
+    if (hasPro) return true;
+    Alert.alert(
+      'Solo piano Pro',
+      'Per allenarti serve il piano Pro.',
+      [
+        { text: 'Annulla', style: 'cancel' },
+        { text: 'Apri profilo', onPress: () => navigation.getParent()?.navigate('Profilo') },
+      ]
+    );
+    return false;
+  }
+
+  function openCustomSelector() {
+    if (!ensurePremiumAccess()) return;
+
+    if (!expandedModuloId) {
+      setExpandedModuloId(moduliAccessibili[0]?.id ?? null);
+    }
+
+    setCustomModalOpen(true);
+  }
+
+  function toggleCustomSezione(id: number) {
+    setSelectedCustomSezioni((curr) => (curr.includes(id) ? curr.filter((x) => x !== id) : [...curr, id]));
+  }
+
+  function startCustomTraining() {
+    if (selectedCustomSezioni.length === 0) {
+      Alert.alert('Seleziona almeno una sezione', 'Scegli le sezioni da includere prima di iniziare.');
       return;
     }
-    if (!sezioneId || !sezioni.some((s) => s.id === sezioneId)) {
-      setSezioneId(sezioni[0].id);
+
+    const firstId = selectedCustomSezioni[0];
+    const firstSection = allSezioni.find((s) => s.id === firstId);
+
+    setCustomModalOpen(false);
+    navigation.push('QuizSessione', {
+      sezioneId: 0,
+      sezioneTitolo: 'Allenamento personalizzato',
+      moduloId: firstSection?.modulo_id ?? moduliAccessibili[0]?.id ?? 0,
+      isRipassoErrori: false,
+      quizPerSprint,
+      quizScope: 'custom-sezioni',
+      sezioneIds: selectedCustomSezioni,
+    });
+  }
+
+  function startQuickTraining() {
+    if (!ensurePremiumAccess()) return;
+
+    if (unlockedSezioneIds.length === 0) {
+      Alert.alert('Nessuna sezione sbloccata', 'Completa almeno una sezione nel percorso per iniziare.');
+      return;
     }
-  }, [sezioni, sezioneId]);
 
-  const moduloOptions = useMemo<Option[]>(
-    () => moduli.map((m) => {
-      const locked = !canAccessModulo(m, !!entitlements?.hasPro);
-      return {
-        id: m.id,
-        label: locked ? `${m.titolo} · Pro` : m.titolo,
-        subtitle: locked ? 'Sblocca con abbonamento Pro' : m.descrizione,
-      };
-    }),
-    [entitlements?.hasPro, moduli]
-  );
+    navigation.push('QuizSessione', {
+      sezioneId: 0,
+      sezioneTitolo: 'Allenamento rapido',
+      moduloId: moduliAccessibili[0]?.id ?? 0,
+      isRipassoErrori: false,
+      quizPerSprint,
+      quizScope: 'custom-sezioni',
+      sezioneIds: unlockedSezioneIds,
+    });
+  }
 
-  const sezioneOptions = useMemo<Option[]>(
-    () => sezioni.map((s) => ({ id: s.id, label: s.titolo, subtitle: s.descrizione })),
-    [sezioni]
-  );
+  function startErrorReview() {
+    if (!ensurePremiumAccess()) return;
 
-  const sezioneSelected = sezioni.find((s) => s.id === sezioneId) ?? null;
-  const canStartSezione = !!sezioneSelected && !sezioniLoading && !moduloLocked;
+    navigation.push('QuizSessione', {
+      sezioneId: 0,
+      sezioneTitolo: 'Ripassa gli errori',
+      moduloId: moduliAccessibili[0]?.id ?? 0,
+      isRipassoErrori: true,
+      quizPerSprint,
+    });
+  }
 
-  if (moduliLoading) {
+  if (moduliLoading || sezioniLoading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={theme.colors.accent} />
@@ -141,7 +174,7 @@ export default function QuizScreen({ navigation }: any) {
     );
   }
 
-  if (moduliError || !moduloSelected) {
+  if (moduliError || moduli.length === 0) {
     return (
       <View style={styles.centered}>
         <Text style={styles.emptyText}>Non riesco a caricare i moduli per iniziare un quiz.</Text>
@@ -150,49 +183,19 @@ export default function QuizScreen({ navigation }: any) {
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+      showsVerticalScrollIndicator={false}
+    >
       <LinearGradient colors={[theme.colors.primary, theme.colors.primaryLight]} style={[styles.hero, theme.shadows.mild]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-        <Text style={styles.heroTitle}>Quiz</Text>
-        <Text style={styles.heroSubtitle}>Scegli cosa allenare e fai uno sprint.</Text>
+        <Text style={styles.heroTitle}>Allenati</Text>
+        <Text style={styles.heroSubtitle}>Scegli il tuo allenamento.</Text>
       </LinearGradient>
 
-      <View style={[styles.card, theme.shadows.mild]}>
-        <Text style={styles.cardTitle}>Selezione</Text>
-
-        <TouchableOpacity
-          style={styles.pickerRow}
-          onPress={() => setModuloModalOpen(true)}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.pickerLabel}>Modulo</Text>
-          <Text style={styles.pickerValue} numberOfLines={1}>{moduloSelected.titolo}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.pickerRow}
-          onPress={() => setSezioneModalOpen(true)}
-          activeOpacity={0.8}
-          disabled={sezioniLoading || sezioneOptions.length === 0 || moduloLocked}
-        >
-          <Text style={styles.pickerLabel}>Sezione</Text>
-          <Text style={styles.pickerValue} numberOfLines={1}>
-            {moduloLocked
-              ? 'Modulo premium bloccato'
-              : (sezioniLoading ? 'Caricamento…' : (sezioneSelected?.titolo ?? 'Nessuna sezione'))}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={[styles.card, theme.shadows.mild]}>
-        <Text style={styles.cardTitle}>Domande per sessione</Text>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Quante domande</Text>
         <View style={styles.chipsRow}>
-          <TouchableOpacity
-            style={[styles.chip, quizPerSprint === 10 && styles.chipActive]}
-            onPress={() => setQuizPerSprint(10)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.chipText, quizPerSprint === 10 && styles.chipTextActive]}>10</Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.chip, quizPerSprint === 20 && styles.chipActive]}
             onPress={() => setQuizPerSprint(20)}
@@ -200,82 +203,127 @@ export default function QuizScreen({ navigation }: any) {
           >
             <Text style={[styles.chipText, quizPerSprint === 20 && styles.chipTextActive]}>20</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.chip, quizPerSprint === 35 && styles.chipActive]}
+            onPress={() => setQuizPerSprint(35)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.chipText, quizPerSprint === 35 && styles.chipTextActive]}>35</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.chip, quizPerSprint === 50 && styles.chipActive]}
+            onPress={() => setQuizPerSprint(50)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.chipText, quizPerSprint === 50 && styles.chipTextActive]}>50</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      <View style={{ gap: 12, marginTop: 'auto' }}>
-        <TouchableOpacity
-          style={[styles.button, !canStartSezione && styles.buttonDisabled]}
-          activeOpacity={0.85}
-          disabled={!canStartSezione}
-          onPress={() => {
-            if (!sezioneSelected) return;
-            navigation.push('QuizSessione', {
-              sezioneId: sezioneSelected.id,
-              sezioneTitolo: sezioneSelected.titolo,
-              moduloId: moduloSelected.id,
-              isRipassoErrori: false,
-              quizPerSprint,
-            });
-          }}
-        >
-          <Text style={styles.buttonText}>Inizia sprint (sezione) →</Text>
-        </TouchableOpacity>
+      <Text style={styles.sectionLabel}>Scegli il tuo allenamento</Text>
 
-        <TouchableOpacity
-          style={[styles.buttonSecondary, moduloLocked && styles.buttonDisabled]}
-          activeOpacity={0.85}
-          disabled={moduloLocked}
-          onPress={() => navigation.push('QuizSessione', {
-            sezioneId: 0,
-            sezioneTitolo: `${moduloSelected.titolo} • Misto`,
-            moduloId: moduloSelected.id,
-            isRipassoErrori: false,
-            quizPerSprint,
-            quizScope: 'modulo',
-          })}
+      <View style={styles.trainingCards}>
+        <LinearGradient
+          colors={[theme.colors.primary, theme.colors.primaryLight]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.trainingCard}
         >
-          <Text style={styles.buttonSecondaryText}>Sprint misto (modulo) →</Text>
-        </TouchableOpacity>
+          <Text style={styles.trainingTitle}>Allenamento rapido</Text>
+          <Text style={styles.trainingSubtitle}>Sessione automatica sugli argomenti già trattati</Text>
+          <TouchableOpacity style={styles.trainingCtaBlue} onPress={startQuickTraining} activeOpacity={0.88}>
+            <Text style={styles.trainingCtaBlueText}>Inizia subito</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+
+        <LinearGradient
+          colors={[theme.colors.primary, theme.colors.primaryLight]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.trainingCard}
+        >
+          <Text style={styles.trainingTitle}>Allenamento personalizzato</Text>
+          <Text style={styles.trainingSubtitle}>Scegli moduli e sezioni da includere</Text>
+          <TouchableOpacity style={styles.trainingCtaBlue} onPress={openCustomSelector} activeOpacity={0.88}>
+            <Text style={styles.trainingCtaBlueText}>Scegli cosa allenare</Text>
+          </TouchableOpacity>
+        </LinearGradient>
+
+        <View style={styles.trainingCardError}>
+          <Text style={styles.trainingErrorTitle}>Ripassa gli errori</Text>
+          <Text style={styles.trainingErrorSubtitle}>Correggi le domande sbagliate</Text>
+          <TouchableOpacity style={styles.trainingCtaRed} onPress={startErrorReview} activeOpacity={0.88}>
+            <Text style={styles.trainingCtaRedText}>Correggi gli errori</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <SelectModal
-        visible={moduloModalOpen}
-        title="Scegli modulo"
-        options={moduloOptions}
-        selectedId={moduloId}
-        onClose={() => setModuloModalOpen(false)}
-        onSelect={(opt) => {
-          const scelto = moduli.find((m) => m.id === opt.id);
-          if (scelto && !canAccessModulo(scelto, !!entitlements?.hasPro)) {
-            setModuloModalOpen(false);
-            Alert.alert(
-              'Modulo Premium',
-              'Per allenarti su questo modulo serve il piano Pro.',
-              [
-                { text: 'Annulla', style: 'cancel' },
-                { text: 'Apri profilo', onPress: () => navigation.getParent()?.navigate('Profilo') },
-              ]
-            );
-            return;
-          }
-          setModuloModalOpen(false);
-          setModuloId(opt.id);
-        }}
-      />
+      <Modal visible={customModalOpen} animationType="slide" transparent onRequestClose={() => setCustomModalOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setCustomModalOpen(false)}>
+          <Pressable style={[styles.customSheet, theme.shadows.premium]} onPress={() => null}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Allenamento personalizzato</Text>
+              <TouchableOpacity onPress={() => setCustomModalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={styles.modalClose}>Chiudi</Text>
+              </TouchableOpacity>
+            </View>
 
-      <SelectModal
-        visible={sezioneModalOpen}
-        title="Scegli sezione"
-        options={sezioneOptions}
-        selectedId={sezioneId}
-        onClose={() => setSezioneModalOpen(false)}
-        onSelect={(opt) => {
-          setSezioneModalOpen(false);
-          setSezioneId(opt.id);
-        }}
-      />
-    </View>
+            <Text style={styles.customHintTitle}>Scegli le sezioni da includere</Text>
+            <Text style={styles.customHintText}>
+              (gli argomenti in <Text style={styles.customHintBold}>grassetto</Text> sono quelli che hai già trattato nel tuo percorso)
+            </Text>
+
+            <FlatList
+              data={moduliAccessibili}
+              keyExtractor={(item) => item.id.toString()}
+              contentContainerStyle={{ paddingBottom: 16 }}
+              renderItem={({ item }) => {
+                const expanded = expandedModuloId === item.id;
+                const sezioniModulo = sezioniByModulo[item.id] || [];
+                return (
+                  <View style={styles.customModuloBox}>
+                    <TouchableOpacity
+                      style={styles.customModuloHeader}
+                      onPress={() => setExpandedModuloId((curr) => (curr === item.id ? null : item.id))}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.customModuloTitle}>{item.titolo}</Text>
+                      <Ionicons name={expanded ? 'chevron-down' : 'chevron-forward'} size={18} color={theme.colors.textSecondary} />
+                    </TouchableOpacity>
+
+                    {expanded && (
+                      <View style={styles.customSectionsWrap}>
+                        {sezioniModulo.map((sezione) => {
+                          const checked = selectedCustomSezioni.includes(sezione.id);
+                          const doneIds = completedByModulo[String(item.id)] || [];
+                          const alreadyDone = doneIds.includes(sezione.id);
+
+                          return (
+                            <TouchableOpacity
+                              key={sezione.id}
+                              style={styles.customSectionRow}
+                              onPress={() => toggleCustomSezione(sezione.id)}
+                              activeOpacity={0.85}
+                            >
+                              <Ionicons name={checked ? 'checkbox' : 'square-outline'} size={20} color={checked ? '#4EA884' : '#B9C4D8'} />
+                              <Text style={[styles.customSectionText, alreadyDone && styles.customSectionTextDone]}>{sezione.titolo}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                );
+              }}
+            />
+
+            <TouchableOpacity style={styles.customStartBtn} onPress={startCustomTraining} activeOpacity={0.85}>
+              <Text style={styles.customStartBtnText}>Inizia allenamento</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </ScrollView>
   );
 }
 
@@ -283,9 +331,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  contentContainer: {
     padding: 16,
     paddingTop: 24,
     gap: 16,
+    paddingBottom: 32,
   },
   centered: {
     flex: 1,
@@ -305,63 +356,40 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     color: '#FFFFFF',
-    fontSize: 26,
+    fontSize: 23,
     fontWeight: '900',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   heroSubtitle: {
     color: '#D2DFED',
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 13,
+    lineHeight: 18,
   },
   card: {
     backgroundColor: theme.colors.card,
     borderRadius: theme.borderRadius.lg,
-    padding: 18,
+    padding: 14,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: '#DEE7F2',
   },
   cardTitle: {
     color: theme.colors.text,
-    fontSize: 16,
-    fontWeight: '900',
-    marginBottom: 12,
-  },
-  pickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    gap: 12,
-  },
-  pickerLabel: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: theme.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  pickerValue: {
-    flex: 1,
-    textAlign: 'right',
     fontSize: 15,
-    fontWeight: '700',
-    color: theme.colors.text,
+    fontWeight: '900',
+    marginBottom: 10,
   },
   chipsRow: {
     flexDirection: 'row',
     gap: 10,
   },
   chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.card,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    minWidth: 64,
+    minWidth: 58,
     alignItems: 'center',
   },
   chipActive: {
@@ -369,54 +397,93 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.accent,
   },
   chipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '900',
     color: theme.colors.textMuted,
   },
   chipTextActive: {
     color: theme.colors.accent,
   },
-  button: {
-    backgroundColor: theme.colors.accent,
-    borderRadius: theme.borderRadius.md,
-    padding: 18,
+  sectionLabel: {
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  trainingCards: {
+    gap: 12,
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  trainingCard: {
+    borderRadius: theme.borderRadius.xl,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  trainingTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  trainingSubtitle: {
+    color: '#D6E5F5',
+    fontSize: 12,
+    marginBottom: 10,
+  },
+  trainingCtaBlue: {
+    borderRadius: theme.borderRadius.full,
+    paddingVertical: 9,
+    backgroundColor: '#6E9EE2',
     alignItems: 'center',
-    ...theme.shadows.mild,
   },
-  buttonDisabled: {
-    opacity: 0.5,
+  trainingCtaBlueText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '900',
   },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
+  trainingCardError: {
+    borderRadius: theme.borderRadius.xl,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E4B4BE',
+    backgroundColor: '#FFFFFF',
   },
-  buttonSecondary: {
-    backgroundColor: 'transparent',
-    borderRadius: theme.borderRadius.md,
-    padding: 18,
+  trainingErrorTitle: {
+    color: '#B93049',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  trainingErrorSubtitle: {
+    color: '#8C4F5A',
+    fontSize: 12,
+    marginBottom: 10,
+  },
+  trainingCtaRed: {
+    borderRadius: theme.borderRadius.full,
+    paddingVertical: 9,
+    backgroundColor: '#CD4E67',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: theme.colors.accent,
   },
-  buttonSecondaryText: {
-    color: theme.colors.accent,
-    fontSize: 16,
-    fontWeight: '800',
+  trainingCtaRedText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '900',
   },
 
-  // Modal
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  modalSheet: {
+  customSheet: {
     backgroundColor: theme.colors.card,
     borderTopLeftRadius: theme.borderRadius.xl,
     borderTopRightRadius: theme.borderRadius.xl,
     padding: 16,
-    maxHeight: '75%',
+    maxHeight: '88%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -434,40 +501,72 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: theme.colors.accent,
   },
-  optionRow: {
+  customHintTitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  customHintText: {
+    color: theme.colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  customHintBold: {
+    color: theme.colors.text,
+    fontWeight: '900',
+  },
+  customModuloBox: {
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    overflow: 'hidden',
+    marginBottom: 10,
+    backgroundColor: '#fff',
+  },
+  customModuloHeader: {
+    paddingHorizontal: 14,
     paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRadius: theme.borderRadius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  customModuloTitle: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  customSectionsWrap: {
+    borderTopWidth: 1,
+    borderTopColor: '#ECF1F8',
+  },
+  customSectionRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  optionRowSelected: {
-    backgroundColor: theme.colors.accentLight,
-  },
-  optionLabel: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: theme.colors.text,
-  },
-  optionLabelSelected: {
-    color: theme.colors.accent,
-  },
-  optionSubtitle: {
-    fontSize: 13,
+  customSectionText: {
     color: theme.colors.textSecondary,
-    marginTop: 2,
-    lineHeight: 18,
+    fontSize: 15,
+    fontWeight: '600',
   },
-  optionCheck: {
+  customSectionTextDone: {
+    color: theme.colors.text,
+    fontWeight: '900',
+  },
+  customStartBtn: {
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.accent,
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 6,
+  },
+  customStartBtnText: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: '900',
-    color: theme.colors.accent,
-  },
-  optionSeparator: {
-    height: 1,
-    backgroundColor: theme.colors.border,
-    opacity: 0.8,
-    marginHorizontal: 8,
   },
 });
