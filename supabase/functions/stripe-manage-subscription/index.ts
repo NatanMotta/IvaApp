@@ -15,6 +15,24 @@ function toStripeBody(params: Record<string, string>) {
   return body.toString();
 }
 
+function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const cleaned = value.trim().toLowerCase();
+  if (!cleaned) return null;
+  // Validazione base, abbastanza permissiva.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned)) return null;
+  return cleaned;
+}
+
+function sanitizeRedirectUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  // Evita placeholder rimasti da test precedente.
+  if (trimmed.includes('example.com')) return null;
+  return trimmed;
+}
+
 async function stripeRequest(
   endpoint: string,
   secretKey: string,
@@ -51,7 +69,6 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
     const stripeProPriceId = Deno.env.get('STRIPE_PRO_PRICE_ID');
@@ -59,7 +76,7 @@ Deno.serve(async (req) => {
     const defaultCancelUrl = Deno.env.get('STRIPE_CANCEL_URL');
     const defaultPortalReturnUrl = Deno.env.get('STRIPE_BILLING_RETURN_URL');
 
-    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+    if (!supabaseUrl || !serviceRoleKey) {
       return new Response('Missing Supabase env vars', {
         status: 500,
         headers: CORS_HEADERS,
@@ -81,15 +98,19 @@ Deno.serve(async (req) => {
       });
     }
 
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const { data: authData, error: authError } = await userClient.auth.getUser();
+    const token = authHeader.replace('Bearer ', '').trim();
+    if (!token) {
+      return new Response('Missing bearer token', {
+        status: 401,
+        headers: CORS_HEADERS,
+      });
+    }
+
+    const { data: authData, error: authError } = await adminClient.auth.getUser(token);
     if (authError || !authData.user) {
       return new Response('Unauthorized', {
         status: 401,
@@ -99,16 +120,22 @@ Deno.serve(async (req) => {
 
     const user = authData.user;
     const payload = await req.json().catch(() => ({}));
-    const successUrl = payload?.successUrl || defaultSuccessUrl;
-    const cancelUrl = payload?.cancelUrl || defaultCancelUrl || successUrl;
-    const portalReturnUrl = payload?.portalReturnUrl || defaultPortalReturnUrl || successUrl;
 
-    if (!successUrl || !cancelUrl) {
-      return new Response('Missing success/cancel URL', {
-        status: 400,
-        headers: CORS_HEADERS,
-      });
-    }
+    const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
+    const redirectBridgeBase = `https://${projectRef}.functions.supabase.co/billing-redirect`;
+
+    const successUrl =
+      sanitizeRedirectUrl(payload?.successUrl) ||
+      sanitizeRedirectUrl(defaultSuccessUrl) ||
+      `${redirectBridgeBase}?target=success`;
+    const cancelUrl =
+      sanitizeRedirectUrl(payload?.cancelUrl) ||
+      sanitizeRedirectUrl(defaultCancelUrl) ||
+      `${redirectBridgeBase}?target=cancel`;
+    const portalReturnUrl =
+      sanitizeRedirectUrl(payload?.portalReturnUrl) ||
+      sanitizeRedirectUrl(defaultPortalReturnUrl) ||
+      `${redirectBridgeBase}?target=return`;
 
     const { data: profile, error: profileError } = await adminClient
       .from('profiles')
@@ -125,11 +152,21 @@ Deno.serve(async (req) => {
 
     let customerId = profile.subscription_customer_id as string | null;
     if (!customerId) {
-      const createdCustomer = await stripeRequest('customers', stripeSecretKey, {
-        email: profile.email || user.email || '',
-        name: profile.nome || user.user_metadata?.nome || '',
+      const customerParams: Record<string, string> = {
         'metadata[supabase_user_id]': user.id,
-      });
+      };
+
+      const customerEmail = normalizeEmail(profile.email) || normalizeEmail(user.email);
+      if (customerEmail) {
+        customerParams.email = customerEmail;
+      }
+
+      const customerNameRaw = profile.nome || user.user_metadata?.nome;
+      if (typeof customerNameRaw === 'string' && customerNameRaw.trim()) {
+        customerParams.name = customerNameRaw.trim();
+      }
+
+      const createdCustomer = await stripeRequest('customers', stripeSecretKey, customerParams);
 
       customerId = createdCustomer.id as string;
 

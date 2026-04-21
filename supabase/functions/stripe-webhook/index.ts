@@ -66,6 +66,17 @@ function extractCustomerId(obj: Record<string, unknown>): string | null {
   return typeof candidate === 'string' && candidate ? candidate : null;
 }
 
+function extractUserIdFromCheckoutObject(obj: Record<string, unknown>): string | null {
+  const clientReferenceId = obj.client_reference_id;
+  if (typeof clientReferenceId === 'string' && clientReferenceId) return clientReferenceId;
+
+  const metadata = obj.metadata as Record<string, unknown> | undefined;
+  const metaUserId = metadata?.supabase_user_id;
+  if (typeof metaUserId === 'string' && metaUserId) return metaUserId;
+
+  return null;
+}
+
 function extractSubscriptionId(obj: Record<string, unknown>): string | null {
   const candidate = obj.subscription;
   return typeof candidate === 'string' && candidate ? candidate : null;
@@ -133,23 +144,29 @@ Deno.serve(async (req) => {
     const subscriptionId = extractSubscriptionId(object);
 
     if (event.type === 'checkout.session.completed') {
-      const clientReferenceId = object.client_reference_id;
-      const userId = typeof clientReferenceId === 'string' ? clientReferenceId : null;
+      const userId = extractUserIdFromCheckoutObject(object);
       const currentPeriodEnd = extractUnixTimestampSeconds(object, 'expires_at');
 
-      if (userId) {
-        const update = {
-          subscription_tier: 'pro',
-          subscription_status: 'active',
-          subscription_provider: 'stripe',
-          subscription_customer_id: customerId,
-          subscription_current_period_end: currentPeriodEnd,
-          stripe_subscription_id: subscriptionId,
-        };
+      const update = {
+        subscription_tier: 'pro',
+        subscription_status: 'active',
+        subscription_provider: 'stripe',
+        subscription_customer_id: customerId,
+        subscription_current_period_end: currentPeriodEnd,
+        stripe_subscription_id: subscriptionId,
+      };
 
+      if (userId) {
         const { error } = await admin.from('profiles').update(update).eq('id', userId);
         if (error) {
-          console.error('checkout.session.completed update error', error);
+          console.error('checkout.session.completed update by user error', error);
+          return new Response('DB update failed', { status: 500 });
+        }
+      } else if (customerId) {
+        // Fallback: se manca client_reference_id usiamo il customer Stripe.
+        const { error } = await admin.from('profiles').update(update).eq('subscription_customer_id', customerId);
+        if (error) {
+          console.error('checkout.session.completed update by customer error', error);
           return new Response('DB update failed', { status: 500 });
         }
       }
@@ -188,7 +205,30 @@ Deno.serve(async (req) => {
           return new Response('DB update failed', { status: 500 });
         }
       }
-    } else if (event.type === 'invoice.payment_failed') {
+    } else if (
+      event.type === 'invoice.paid' ||
+      event.type === 'invoice.payment_succeeded' ||
+      event.type === 'invoice_payment.paid'
+    ) {
+      if (customerId) {
+        const { error } = await admin
+          .from('profiles')
+          .update({
+            subscription_tier: 'pro',
+            subscription_status: 'active',
+            subscription_provider: 'stripe',
+          })
+          .eq('subscription_customer_id', customerId);
+
+        if (error) {
+          console.error('invoice paid update error', error);
+          return new Response('DB update failed', { status: 500 });
+        }
+      }
+    } else if (
+      event.type === 'invoice.payment_failed' ||
+      event.type === 'invoice_payment.failed'
+    ) {
       if (customerId) {
         const { error } = await admin
           .from('profiles')

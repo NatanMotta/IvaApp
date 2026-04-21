@@ -20,6 +20,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export default function AuthScreen() {
   // 'login' | 'register' — quale form mostrare
   const [modalita, setModalita] = useState<'login' | 'register'>('login');
@@ -39,6 +43,11 @@ export default function AuthScreen() {
 
     if (!emailPulita || !password || !nomePulito) {
       Alert.alert('Errore', 'Compila tutti i campi');
+      return;
+    }
+
+    if (!isValidEmail(emailPulita)) {
+      Alert.alert('Errore', 'Email non valida. Controlla il formato (es: nome@dominio.com).');
       return;
     }
 
@@ -96,6 +105,11 @@ export default function AuthScreen() {
 
     if (!emailPulita || !password) {
       Alert.alert('Errore', 'Inserisci email e password');
+      return;
+    }
+
+    if (!isValidEmail(emailPulita)) {
+      Alert.alert('Errore', 'Email non valida. Controlla il formato (es: nome@dominio.com).');
       return;
     }
 

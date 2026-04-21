@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  AppState,
   Linking,
   ScrollView,
   StyleSheet,
@@ -79,6 +80,12 @@ export default function ProfiloScreen() {
   const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFS);
   const [loading, setLoading] = useState(true);
   const [billingLoading, setBillingLoading] = useState(false);
+  const [awaitingBillingSync, setAwaitingBillingSync] = useState(false);
+  const [proAlertShown, setProAlertShown] = useState(false);
+  const [statusAlertsShown, setStatusAlertsShown] = useState({
+    pastDue: false,
+    canceled: false,
+  });
 
   const piano = useMemo(
     () => (entitlements?.tier === 'pro' ? 'Pro' : 'Free'),
@@ -139,6 +146,89 @@ export default function ProfiloScreen() {
     };
   }, []);
 
+  async function refreshEntitlementsUntilSynced() {
+    // Il webhook Stripe può arrivare qualche secondo dopo il redirect.
+    for (let i = 0; i < 12; i += 1) {
+      await queryClient.invalidateQueries({ queryKey: ['entitlements'] });
+      const refreshed = await refetchEntitlements();
+      if (refreshed.data?.hasPro) {
+        if (!proAlertShown) {
+          setProAlertShown(true);
+          Alert.alert('Versione Pro attivata', 'Abbonamento aggiornato con successo.');
+        }
+        setAwaitingBillingSync(false);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+
+    const onUrl = ({ url }: { url: string }) => {
+      if (!mounted) return;
+      const normalized = url.toLowerCase();
+      if (normalized.includes('billing/success')) {
+        setAwaitingBillingSync(true);
+        void refreshEntitlementsUntilSynced();
+      }
+    };
+
+    const linkingSub = Linking.addEventListener('url', onUrl);
+
+    // Cold start tramite deep link.
+    Linking.getInitialURL()
+      .then((url) => {
+        if (!mounted || !url) return;
+        onUrl({ url });
+      })
+      .catch(() => null);
+
+    // Fallback: al rientro in foreground dopo checkout, prova sync.
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (!mounted) return;
+      if (state === 'active' && awaitingBillingSync) {
+        void refreshEntitlementsUntilSynced();
+      }
+    });
+
+    return () => {
+      mounted = false;
+      linkingSub.remove();
+      appStateSub.remove();
+    };
+  }, [awaitingBillingSync, proAlertShown]);
+
+  useEffect(() => {
+    const status = entitlements?.status;
+    if (!status) return;
+
+    if (status === 'active' || status === 'trialing') {
+      if (statusAlertsShown.pastDue || statusAlertsShown.canceled) {
+        setStatusAlertsShown({ pastDue: false, canceled: false });
+      }
+      return;
+    }
+
+    if (status === 'past_due' && !statusAlertsShown.pastDue) {
+      setStatusAlertsShown((prev) => ({ ...prev, pastDue: true }));
+      Alert.alert(
+        'Pagamento non riuscito',
+        'Non siamo riusciti ad addebitare il rinnovo. Aggiorna il metodo di pagamento in Gestisci abbonamento.'
+      );
+      return;
+    }
+
+    if (status === 'canceled' && !statusAlertsShown.canceled) {
+      setStatusAlertsShown((prev) => ({ ...prev, canceled: true }));
+      Alert.alert(
+        'Abbonamento annullato',
+        'Il piano Pro è stato annullato. Puoi riattivarlo da Gestisci abbonamento.'
+      );
+    }
+  }, [entitlements?.status, statusAlertsShown.canceled, statusAlertsShown.pastDue]);
+
   async function aggiornaPreferenza<K extends keyof Preferences>(key: K, value: Preferences[K]) {
     const updated = { ...prefs, [key]: value };
     setPrefs(updated);
@@ -192,18 +282,33 @@ export default function ProfiloScreen() {
     try {
       setBillingLoading(true);
 
+      const billingBody: Record<string, string> = {};
+      if (process.env.EXPO_PUBLIC_BILLING_SUCCESS_URL) {
+        billingBody.successUrl = process.env.EXPO_PUBLIC_BILLING_SUCCESS_URL;
+      }
+      if (process.env.EXPO_PUBLIC_BILLING_CANCEL_URL) {
+        billingBody.cancelUrl = process.env.EXPO_PUBLIC_BILLING_CANCEL_URL;
+      }
+      if (process.env.EXPO_PUBLIC_BILLING_PORTAL_RETURN_URL) {
+        billingBody.portalReturnUrl = process.env.EXPO_PUBLIC_BILLING_PORTAL_RETURN_URL;
+      }
+
       const { data, error } = await supabase.functions.invoke('stripe-manage-subscription', {
-        body: {
-          // Usa una pagina web tua come ponte (deeplink/universal link verso app).
-          // Puoi sovrascrivere questi valori con i secret della function lato Supabase.
-          successUrl: process.env.EXPO_PUBLIC_BILLING_SUCCESS_URL,
-          cancelUrl: process.env.EXPO_PUBLIC_BILLING_CANCEL_URL,
-          portalReturnUrl: process.env.EXPO_PUBLIC_BILLING_PORTAL_RETURN_URL,
-        },
+        body: billingBody,
       });
 
       if (error) {
-        throw new Error(error.message);
+        let backendMessage = '';
+        const maybeContext = (error as any)?.context;
+        if (maybeContext?.json) {
+          try {
+            const parsed = await maybeContext.json();
+            backendMessage = parsed?.error || parsed?.message || '';
+          } catch {
+            // no-op
+          }
+        }
+        throw new Error(backendMessage || error.message);
       }
 
       const url = data?.url;
@@ -216,6 +321,8 @@ export default function ProfiloScreen() {
         throw new Error('Impossibile aprire il checkout su questo dispositivo');
       }
 
+      setAwaitingBillingSync(true);
+      setProAlertShown(false);
       await Linking.openURL(url);
     } catch (e) {
       const message =

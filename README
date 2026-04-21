@@ -92,12 +92,14 @@ Assicurati che policy RLS e permessi siano coerenti con i flussi di lettura/scri
    - File funzione:
      - `supabase/functions/stripe-webhook/index.ts`
      - `supabase/functions/stripe-manage-subscription/index.ts`
+     - `supabase/functions/billing-redirect/index.ts`
    - Richiede Supabase CLI installata e progetto linkato.
    - Comandi:
 
 ```bash
 supabase functions deploy stripe-webhook
 supabase functions deploy stripe-manage-subscription
+supabase functions deploy billing-redirect
 supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_xxx
 supabase secrets set STRIPE_SECRET_KEY=sk_live_xxx
 supabase secrets set STRIPE_PRO_PRICE_ID=price_xxx
@@ -125,3 +127,4 @@ supabase secrets set STRIPE_BILLING_RETURN_URL=https://your-domain.com/billing/r
    - Se utente senza piano attivo: viene creato Checkout Stripe (subscription).
    - Se utente già Pro/trial/past_due: viene aperto Stripe Customer Portal.
    - La function restituisce `url`, e l’app apre il browser in automatico.
+   - Redirect finale: viene usata la function `billing-redirect` (HTTPS) che rilancia `ivaapp://...` per rientrare in app.
